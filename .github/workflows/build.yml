@@ -39,9 +39,8 @@ jobs:
       - name: Prebuild Android (generates native android/ folder)
         run: npx expo prebuild --platform android --clean
 
-            - name: Build Expo Android Bundle
+      - name: Build Expo Android Bundle
         run: npx expo export:embed --platform android --dev false --entry-file App.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res
-
 
       - name: Make gradlew executable
         run: chmod +x android/gradlew
