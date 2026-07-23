@@ -1,4 +1,4 @@
-name: Build FRIDAY APK
+Name: Build FRIDAY APK
 
 on:
   push:
@@ -36,7 +36,7 @@ jobs:
       - name: Install Expo CLI
         run: npm install -g @expo/cli
 
-            - name: Prebuild Android (generates native android/ folder)
+      - name: Prebuild Android (generates native android/ folder)
         run: npx expo prebuild --platform android --clean
 
       - name: Build Expo Android Bundle
@@ -44,7 +44,6 @@ jobs:
 
       - name: Make gradlew executable
         run: chmod +x android/gradlew
-
 
       - name: Build debug APK
         working-directory: android
