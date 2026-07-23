@@ -1,4 +1,4 @@
-Name: Build FRIDAY APK
+name: Build FRIDAY APK
 
 on:
   push:
