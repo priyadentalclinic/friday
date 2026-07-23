@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "FRIDAY",
+    "slug": "friday-expo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "android": {
+      "package": "com.friday.ai",
+      "permissions": [
+        "RECORD_AUDIO"
+      ]
+    },
+    "extra": {
+      "eas": {
+        "projectId": "db9d92de-f3aa-4e72-a33d-005ed5a305a5"
+      }
+    }
+  }
+}
