@@ -19,6 +19,7 @@
     "react-native": "0.81.5",
     "react-native-paper": "^5.13.1",
     "react-native-reanimated": "~4.1.1",
+    "react-native-worklets": "~0.5.1",
     "react-native-safe-area-context": "~5.6.0"
   },
   "devDependencies": {
