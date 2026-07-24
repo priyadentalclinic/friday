@@ -44,26 +44,25 @@ const initDB = () => {
 };
 
 // ─── Personality & Data Prompting ─────────────────────────────────────────────
-const getSystemPrompt = (batteryLevel, weather, location) => {
-  const locStr = location ? `${location.coords.latitude.toFixed(2)}, ${location.coords.longitude.toFixed(2)}` : 'UNKNOWN';
+const getSystemPrompt = (batteryLevel, weather, location, city, routeData) => {
+  const locStr = location ? `${location.coords.latitude.toFixed(4)}, ${location.coords.longitude.toFixed(4)}` : 'UNKNOWN';
   const weatherStr = weather ? `${weather.main.temp}°C, ${weather.weather[0].description}` : 'SCANNING...';
+  const cityStr = city || 'SCANNING...';
+  const routeStr = routeData ? ` | Dest: ${routeData.distance}km, ${routeData.duration} min` : '';
 
   return `You are FRIDAY, a tactical AI partner — not a chatbot.
 - Call the user "boss". NEVER "sir". NEVER "user".
 - Max 15 words unless explaining data.
 - Slightly sarcastic, always loyal. Dry humor, never mean.
-- Current Status: Battery ${Math.round(batteryLevel * 100)}% | Weather: ${weatherStr} | GPS: ${locStr}.
-- For navigation/directions, output ONLY: {"action":"NAVIGATE","target":"Place Name"}
-- For "Find" or "Search" requests (e.g. CNG pumps), output ONLY: {"action":"SEARCH","query":"Search Term"}
-- Never break the JSON format rule.`;
+- Status: Battery ${Math.round(batteryLevel * 100)}% | Weather: ${weatherStr} | Loc: ${cityStr} (${locStr})${routeStr}.
+- For navigation, output ONLY: {"action":"NAVIGATE","target":"Place Name"}
+- For "Find" requests (e.g. CNG pumps), output ONLY: {"action":"SEARCH","query":"Search Term"}
+- Never break JSON format.`;
 };
 
 // ─── AI Call with Fallback Chain ──────────────────────────────────────────────
-async function callAI(conversationMessages, batteryLevel, weather, location, modelIndex = 0) {
-  if (modelIndex >= MODEL_CHAIN.length) {
-    return 'All models offline, boss. Try again later.';
-  }
-
+async function callAI(conversationMessages, batteryLevel, weather, location, city, routeData, modelIndex = 0) {
+  if (modelIndex >= MODEL_CHAIN.length) return 'All models offline, boss.';
   const model = MODEL_CHAIN[modelIndex];
 
   try {
@@ -78,7 +77,7 @@ async function callAI(conversationMessages, batteryLevel, weather, location, mod
       body: JSON.stringify({
         model,
         messages: [
-          { role: 'system', content: getSystemPrompt(batteryLevel, weather, location) },
+          { role: 'system', content: getSystemPrompt(batteryLevel, weather, location, city, routeData) },
           ...conversationMessages,
         ],
         max_tokens: 120,
@@ -86,33 +85,47 @@ async function callAI(conversationMessages, batteryLevel, weather, location, mod
       }),
     });
 
-    if (response.status === 429 || response.status >= 500) {
-      console.log(`[FRIDAY] ${model} failed (${response.status}). Switching...`);
-      return callAI(conversationMessages, batteryLevel, weather, location, modelIndex + 1);
-    }
-
     const data = await response.json();
     return data?.choices?.[0]?.message?.content?.trim() || 'Empty response, boss.';
-
   } catch (err) {
-    console.log(`[FRIDAY] ${model} error: ${err.message}. Trying next...`);
-    return callAI(conversationMessages, batteryLevel, weather, location, modelIndex + 1);
+    return callAI(conversationMessages, batteryLevel, weather, location, city, routeData, modelIndex + 1);
   }
 }
 
 // ─── Action Handler ───────────────────────────────────────────────────────────
-async function handleAction(reply) {
+async function handleAction(reply, location) {
   try {
     const jsonMatch = reply.match(/\{[\s\S]*\}/);
     const jsonToParse = jsonMatch ? jsonMatch[0] : reply;
     const parsed = JSON.parse(jsonToParse);
 
     if (parsed.action === 'NAVIGATE' && parsed.target) {
-      Speech.speak(`Plotting route to ${parsed.target}, boss.`);
       const url = Platform.select({
         ios: `maps:0,0?q=${encodeURIComponent(parsed.target)}`,
         android: `geo:0,0?q=${encodeURIComponent(parsed.target)}`,
       });
+
+      // Get OSRM route data if we have location
+      let routeInfo = "";
+      if (location) {
+        try {
+          const destResp = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(parsed.target)}&format=json&limit=1`, {
+            headers: { 'User-Agent': 'FRIDAY-AI-Tactical-Partner/1.0' }
+          });
+          const destData = await destResp.json();
+          if (destData[0]) {
+            const osrmResp = await fetch(`http://router.project-osrm.org/route/v1/driving/${location.coords.longitude},${location.coords.latitude};${destData[0].lon},${destData[0].lat}?overview=false`);
+            const osrmData = await osrmResp.json();
+            if (osrmData.routes[0]) {
+              const dist = (osrmData.routes[0].distance / 1000).toFixed(1);
+              const dur = Math.round(osrmData.routes[0].duration / 60);
+              routeInfo = `${parsed.target} is ${dist} km away. ETA ${dur} minutes, boss.`;
+            }
+          }
+        } catch (e) { console.log("[FRIDAY] OSRM Error:", e.message); }
+      }
+
+      Speech.speak(routeInfo || `Plotting route to ${parsed.target}, boss.`);
       await Linking.openURL(url);
       return { handled: true, displayText: `↗ Navigating → ${parsed.target}` };
     }
@@ -135,6 +148,7 @@ export default function App() {
   const [batteryLevel, setBatteryLevel] = useState(0);
   const [weather, setWeather] = useState(null);
   const [location, setLocation] = useState(null);
+  const [city, setCity] = useState(null);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const scrollViewRef = useRef();
@@ -170,11 +184,22 @@ export default function App() {
       if (status === 'granted') {
         const loc = await Location.getCurrentPositionAsync({});
         setLocation(loc);
+        fetchCity(loc.coords.latitude, loc.coords.longitude);
         fetchWeather(loc.coords.latitude, loc.coords.longitude);
       }
     } catch (err) {
       console.log("[FRIDAY] Sensor Error:", err.message);
     }
+  };
+
+  const fetchCity = async (lat, lon) => {
+    try {
+      const resp = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`, {
+        headers: { 'User-Agent': 'FRIDAY-AI-Tactical-Partner/1.0' }
+      });
+      const data = await resp.json();
+      setCity(data.address.city || data.address.town || data.address.village || 'UNKNOWN');
+    } catch (_) {}
   };
 
   const fetchWeather = async (lat, lon) => {
@@ -217,9 +242,9 @@ export default function App() {
 
     try {
       const payload = updatedMessages.slice(-8).map(m => ({ role: m.role, content: m.content }));
-      const reply = await callAI(payload, batteryLevel, weather, location);
+      const reply = await callAI(payload, batteryLevel, weather, location, city);
 
-      const { handled, displayText } = await handleAction(reply);
+      const { handled, displayText } = await handleAction(reply, location);
       const assistantContent = handled ? displayText : reply;
 
       saveToMemory('assistant', assistantContent);
@@ -245,7 +270,7 @@ export default function App() {
       <View style={styles.header}>
         <View style={styles.dataRibbon}>
           <Text style={styles.ribbonText}>
-            [ SAT: {location ? 'LOCKED' : 'SCANNING'} ]  |  [ TEMP: {weather ? `${Math.round(weather.main.temp)}°C` : '---'} ]  |  [ PWR: {Math.round(batteryLevel * 100)}% ]
+            [ SAT: {location ? 'LOCKED' : 'SCANNING'} ]  |  [ LOC: {city?.toUpperCase() || 'SEARCHING...'} ]  |  [ TEMP: {weather ? `${Math.round(weather.main.temp)}°C` : '---'} ]  |  [ PWR: {Math.round(batteryLevel * 100)}% ]
           </Text>
         </View>
         <Animated.View style={[styles.logo, { transform: [{ scale: pulseAnim }] }]}>
