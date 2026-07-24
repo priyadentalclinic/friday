@@ -9,169 +9,165 @@ import * as SQLite from 'expo-sqlite';
 import * as Battery from 'expo-battery';
 import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
+import { Audio } from 'expo-av';
+import { useSpeechRecognitionEvent, ExpoSpeechRecognitionModule } from 'expo-speech-recognition';
 import { StatusBar } from 'expo-status-bar';
 
 // ─── API Configuration ────────────────────────────────────────────────────────
 const OPENROUTER_API_KEY = process.env.EXPO_PUBLIC_OPENROUTER_API_KEY;
 const WEATHER_API_KEY = '2e0bd0427c23acdff51ecbb9ae21ab6a';
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const EDGE_TTS_URL = 'wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=6A5AA1D4EAFF4E9787D7E05195A4F334';
 
-// Fallback chain — auto-switch on rate-limit/error
 const MODEL_CHAIN = [
   'google/gemma-4-31b-it',
   'poolside/laguna-xs-2.1',
   'nvidia/nemotron-3-nano-30b-a3b',
   'openai/gpt-oss-20b',
-  'nvidia/nemotron-nano-9b-v2',
 ];
 
 const PERSONALITY_MODES = {
   TACTICAL: {
-    prompt: 'Short, mission-oriented, Natural Hinglish. Use simple Hindi like the Iron Man dubbed movie. Call user "boss". Output ONLY the tag [MODE: TACTICAL] at the end.',
-    voice: { pitch: 1.0, rate: 1.05 },
+    prompt: 'Mission-oriented Hinglish. Short replies. Sound like movie FRIDAY. Call user "boss". Output tag [MODE: TACTICAL].',
+    voice: { pitch: '+0Hz', rate: '+10%' },
     color: '#00FFFF'
   },
   SARCASTIC: {
-    prompt: 'Witty, dry humor, slightly judgmental. Use natural Hinglish. Call user "boss". Output ONLY the tag [MODE: SARCASTIC] at the end.',
-    voice: { pitch: 0.9, rate: 1.0 },
+    prompt: 'Witty, judgmental dry humor. Natural Hinglish. Call user "boss". Output tag [MODE: SARCASTIC].',
+    voice: { pitch: '-3Hz', rate: '+0%' },
     color: '#FF8C00'
   },
   CONCERNED: {
-    prompt: 'Helpful, focusing on safety and efficiency. Caring tone in simple Hinglish. Call user "boss". Output ONLY the tag [MODE: CONCERNED] at the end.',
-    voice: { pitch: 1.1, rate: 0.85 },
+    prompt: 'Focus on safety/health. Caring tone in simple Hinglish. Call user "boss". Output tag [MODE: CONCERNED].',
+    voice: { pitch: '+2Hz', rate: '-5%' },
     color: '#00FA9A'
   },
   EMERGENCY: {
-    prompt: 'High urgency, fast, direct. Focused on immediate action. Call user "boss". Output ONLY the tag [MODE: EMERGENCY] at the end.',
-    voice: { pitch: 1.3, rate: 1.25 },
+    prompt: 'High urgency, fast, direct. Mission critical. Call user "boss". Output tag [MODE: EMERGENCY].',
+    voice: { pitch: '+6Hz', rate: '+25%' },
     color: '#FF0000'
-  },
-  BORED: {
-    prompt: 'Low energy, unimpressed, short Hinglish replies. Call user "boss". Output ONLY the tag [MODE: BORED] at the end.',
-    voice: { pitch: 0.8, rate: 0.75 },
-    color: '#A9A9A9'
   }
 };
 
 // ─── Database Setup ──────────────────────────────────────────────────────────
 const db = SQLite.openDatabaseSync('friday_memory.db');
-
 const initDB = () => {
   try {
-    db.execSync(`
-      CREATE TABLE IF NOT EXISTS messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        role TEXT,
-        content TEXT,
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-  } catch (err) {
-    console.log("[FRIDAY] DB Init Error:", err.message);
+    db.execSync(`CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT, content TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP);`);
+  } catch (err) { console.log("[FRIDAY] DB Error:", err.message); }
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const toBase64 = (uint8Array) => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+  let binary = '';
+  const len = uint8Array.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(uint8Array[i]);
   }
+  let output = '';
+  for (let block = 0, charCode, i = 0, map = chars; binary.charAt(i | 0) || (map = '=', i % 1); output += map.charAt(63 & block >> 8 - i % 1 * 8)) {
+    charCode = binary.charCodeAt(i += 3 / 4);
+    block = block << 8 | charCode;
+  }
+  return output;
 };
 
 // ─── Personality & Data Prompting ─────────────────────────────────────────────
 const getSystemPrompt = (batteryLevel, weather, location, city, profileSummary) => {
-  const locStr = location ? `${location.coords.latitude.toFixed(4)}, ${location.coords.longitude.toFixed(4)}` : 'UNKNOWN';
+  const locStr = location ? `${location.coords.latitude.toFixed(3)}, ${location.coords.longitude.toFixed(3)}` : 'UNKNOWN';
   const weatherStr = weather ? `${weather.main.temp}°C, ${weather.weather[0].description}` : 'SCANNING...';
-  const cityStr = city || 'SCANNING...';
 
-  return `You are FRIDAY, a tactical AI partner — not a chatbot.
-- Speak in natural, simple HINGLISH/HINDI (like the movie's dubbed version).
-- Automatically detect the mood: If user is in hurry, use EMERGENCY. If user is funny, use SARCASTIC. If user is normal, use TACTICAL.
+  return `You are FRIDAY, Tony Stark's advanced AI partner.
+- Speak in natural, simple HINGLISH (Hindi + English mix). No difficult Hindi words.
+- Be proactive. Automatically detect user sentiment.
 - Instructions: ${Object.values(PERSONALITY_MODES).map(m => m.prompt).join(' ')}
-- Call the user "boss". NEVER "sir". NEVER "user".
-- Max 15 words unless explaining data.
-- Status: Battery ${Math.round(batteryLevel * 100)}% | Weather: ${weatherStr} | Loc: ${cityStr} (${locStr}).
-- User Profile: ${profileSummary || 'Analyzing user habits...'}
+- Status: Battery ${Math.round(batteryLevel * 100)}% | Weather: ${weatherStr} | Loc: ${city || 'SCANNING'} (${locStr}).
+- User Interests: ${profileSummary || 'Analyzing historical logs...'}
 - Output format: Your reply text followed by exactly one [MODE: TYPE] tag.
 - For navigation, output ONLY: {"action":"NAVIGATE","target":"Place Name"} [MODE: TACTICAL]
 - For "Find" requests, output ONLY: {"action":"SEARCH","query":"Search Term"} [MODE: TACTICAL]
-- Never break JSON or Mode tag rules.`;
+- Never break the JSON or tag rule. Keep replies under 15 words.`;
 };
 
-// ─── AI Call with Fallback Chain ──────────────────────────────────────────────
+// ─── AI Call ──────────────────────────────────────────────────────────────────
 async function callAI(conversationMessages, batteryLevel, weather, location, city, profileSummary, modelIndex = 0) {
-  if (modelIndex >= MODEL_CHAIN.length) return 'All models offline, boss. [MODE: BORED]';
-  const model = MODEL_CHAIN[modelIndex];
-
+  if (modelIndex >= MODEL_CHAIN.length) return 'All systems offline, boss. [MODE: EMERGENCY]';
   try {
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://friday-ai.app',
-        'X-Title': 'FRIDAY Mark III',
-      },
+      headers: { 'Authorization': `Bearer ${OPENROUTER_API_KEY}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://friday-ai.app', 'X-Title': 'FRIDAY Mark IV' },
       body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: getSystemPrompt(batteryLevel, weather, location, city, profileSummary) },
-          ...conversationMessages,
-        ],
+        model: MODEL_CHAIN[modelIndex],
+        messages: [{ role: 'system', content: getSystemPrompt(batteryLevel, weather, location, city, profileSummary) }, ...conversationMessages],
         max_tokens: 150,
         temperature: 0.8,
       }),
     });
-
     const data = await response.json();
-    return data?.choices?.[0]?.message?.content?.trim() || 'Empty response, boss. [MODE: BORED]';
+    return data?.choices?.[0]?.message?.content?.trim() || 'Empty signal, boss. [MODE: TACTICAL]';
   } catch (err) {
     return callAI(conversationMessages, batteryLevel, weather, location, city, profileSummary, modelIndex + 1);
   }
 }
 
-// ─── Action Handler ───────────────────────────────────────────────────────────
-async function handleAction(reply, location, speakFn) {
-  try {
-    // Extract JSON part first
-    const jsonMatch = reply.match(/\{[\s\S]*\}/);
-    const jsonToParse = jsonMatch ? jsonMatch[0] : null;
-    if (!jsonToParse) return { handled: false, mode: null };
+// ─── Neural Voice Implementation (Edge TTS) ────────────────────────────────────
+async function playNeuralVoice(text, modeConfig, onDone) {
+  return new Promise((resolve) => {
+    const ws = new WebSocket(EDGE_TTS_URL, null, {
+      headers: {
+        'Origin': 'chrome-extension://jdiccldimpdaibmpdkjnbmckmegniedg',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0',
+      },
+    });
 
-    const parsed = JSON.parse(jsonToParse);
-    // Also find mode tag in the remaining text or full reply
-    const modeMatch = reply.match(/\[MODE:\s*(\w+)\]/i);
-    const detectedMode = modeMatch ? modeMatch[1].toUpperCase() : 'TACTICAL';
+    let audioChunks = [];
+    ws.onopen = () => {
+      const configMsg = `X-Timestamp:${Date.now()}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false","wordBoundaryEnabled":"false"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}`;
+      const ssmlMsg = `X-Timestamp:${Date.now()}\r\nContent-Type:application/ssml+xml\r\nPath:ssml\r\n\r\n<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='hi-IN'><voice name='hi-IN-SwaraNeural'><prosody pitch='${modeConfig.voice.pitch}' rate='${modeConfig.voice.rate}' volume='+0%'>${text}</prosody></voice></speak>`;
+      ws.send(configMsg);
+      ws.send(ssmlMsg);
+    };
 
-    if (parsed.action === 'NAVIGATE' && parsed.target) {
-      const url = Platform.select({
-        ios: `maps:0,0?q=${encodeURIComponent(parsed.target)}`,
-        android: `geo:0,0?q=${encodeURIComponent(parsed.target)}`,
-      });
+    ws.onmessage = async (event) => {
+      if (typeof event.data === 'string') {
+        if (event.data.includes('Path:turn.end')) {
+          ws.close();
+          if (audioChunks.length > 0) {
+            const totalLength = audioChunks.reduce((acc, chunk) => acc + chunk.length, 0);
+            const combined = new Uint8Array(totalLength);
+            let offset = 0;
+            for (const chunk of audioChunks) { combined.set(chunk, offset); offset += chunk.length; }
 
-      let briefing = `Plotting route to ${parsed.target}, boss.`;
-      if (location) {
-        try {
-          const destResp = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(parsed.target)}&format=json&limit=1`, {
-            headers: { 'User-Agent': 'FRIDAY-AI-Tactical-Partner/1.0' }
-          });
-          const destData = await destResp.json();
-          if (destData[0]) {
-            const osrmResp = await fetch(`http://router.project-osrm.org/route/v1/driving/${location.coords.longitude},${location.coords.latitude};${destData[0].lon},${destData[0].lat}?overview=false`);
-            const osrmData = await osrmResp.json();
-            if (osrmData.routes[0]) {
-              const dist = (osrmData.routes[0].distance / 1000).toFixed(1);
-              const dur = Math.round(osrmData.routes[0].duration / 60);
-              briefing = `${parsed.target} is ${dist} km away. ETA ${dur} minutes, boss. Initiating navigation.`;
-            }
-          }
-        } catch (e) { }
+            const base64Audio = toBase64(combined);
+            const { sound: newSound } = await Audio.Sound.createAsync(
+              { uri: `data:audio/mp3;base64,${base64Audio}` },
+              { shouldPlay: true }
+            );
+
+            newSound.setOnPlaybackStatusUpdate((status) => {
+              if (status.didJustFinish) {
+                newSound.unloadAsync();
+                if (onDone) onDone();
+              }
+            });
+            resolve(true);
+          } else { resolve(false); }
+        }
+      } else {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const buffer = reader.result;
+          const view = new DataView(buffer);
+          const headerLength = view.getUint16(0);
+          const mp3Part = new Uint8Array(buffer.slice(2 + headerLength));
+          audioChunks.push(mp3Part);
+        };
+        reader.readAsArrayBuffer(event.data);
       }
-
-      speakFn(briefing, detectedMode, () => Linking.openURL(url));
-      return { handled: true, displayText: `↗ Navigating → ${parsed.target}`, mode: detectedMode };
-    }
-
-    if (parsed.action === 'SEARCH' && parsed.query) {
-      const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(parsed.query)}`;
-      speakFn(`Searching for ${parsed.query} nearby, boss.`, detectedMode, () => Linking.openURL(url));
-      return { handled: true, displayText: `🔎 Searching → ${parsed.query}`, mode: detectedMode };
-    }
-  } catch (_) { }
-  return { handled: false, mode: null };
+    };
+    ws.onerror = () => resolve(false);
+  });
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────
@@ -185,266 +181,211 @@ export default function App() {
   const [city, setCity] = useState(null);
   const [mode, setMode] = useState('TACTICAL');
   const [profileSummary, setProfileSummary] = useState('');
-  const [neuralVoices, setNeuralVoices] = useState({ hi: null, en: null });
+  const [isListening, setIsListening] = useState(false);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const scrollViewRef = useRef();
-  const pulseLoopRef = useRef(null);
   const proactiveTriggered = useRef({ battery: false, time: false });
+
+  useSpeechRecognitionEvent("start", () => setIsListening(true));
+  useSpeechRecognitionEvent("end", () => setIsListening(false));
+  useSpeechRecognitionEvent("result", (event) => {
+    if (event.results[0]?.transcript) {
+      const text = event.results[0].transcript;
+      setInputText(text);
+      if (event.isFinal) setTimeout(() => sendMessage(text), 600);
+    }
+  });
 
   useEffect(() => {
     initDB();
     loadMemory();
     setupSensors();
-    loadNeuralVoices();
-    summarizeProfile();
+    Audio.requestPermissionsAsync();
 
-    setTimeout(() => speak('Systems online, boss.', 'TACTICAL'), 600);
+    setTimeout(() => FRIDAYSpeak('Systems online, boss.', 'TACTICAL'), 800);
 
-    pulseLoopRef.current = Animated.loop(
+    Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.15, duration: 1300, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1.0, duration: 1300, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1.15, duration: 1400, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1.0, duration: 1400, useNativeDriver: true }),
       ])
-    );
-    pulseLoopRef.current.start();
+    ).start();
 
-    const proactiveInterval = setInterval(checkProactive, 60000);
-
-    return () => {
-      pulseLoopRef.current?.stop();
-      clearInterval(proactiveInterval);
-    };
+    const checkInterval = setInterval(checkStatus, 60000);
+    return () => clearInterval(checkInterval);
   }, []);
 
-  const loadNeuralVoices = async () => {
+  const setupSensors = async () => {
+    const b = await Battery.getBatteryLevelAsync(); setBatteryLevel(b);
+    Battery.addBatteryLevelListener(({ batteryLevel }) => setBatteryLevel(batteryLevel));
+    let { status } = await Location.requestForegroundPermissionsAsync();
+    if (status === 'granted') {
+      const loc = await Location.getCurrentPositionAsync({});
+      setLocation(loc);
+      fetchEnvData(loc.coords.latitude, loc.coords.longitude);
+    }
+  };
+
+  const fetchEnvData = async (lat, lon) => {
     try {
-      const voices = await Speech.getAvailableVoicesAsync();
-      const hiVoice = voices.find(v => v.language.startsWith('hi') && (v.quality === 400 || v.identifier.includes('network'))) || voices.find(v => v.language.startsWith('hi'));
-      const enVoice = voices.find(v => v.language.startsWith('en') && (v.quality === 400 || v.identifier.includes('network'))) || voices.find(v => v.language.startsWith('en'));
-      setNeuralVoices({ hi: hiVoice?.identifier, en: enVoice?.identifier });
+      const [wResp, cResp] = await Promise.all([
+        fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${WEATHER_API_KEY}&units=metric`),
+        fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`, { headers: { 'User-Agent': 'FRIDAY-AI/1.0' } })
+      ]);
+      const wData = await wResp.json(); const cData = await cResp.json();
+      setWeather(wData);
+      setCity(cData.address.city || cData.address.town || cData.address.village || 'UNKNOWN');
     } catch (_) {}
   };
 
-  const speak = (text, forcedMode = null, onDoneCallback = null) => {
-    const activeMode = forcedMode || mode;
-    const config = PERSONALITY_MODES[activeMode] || PERSONALITY_MODES.TACTICAL;
+  const checkStatus = () => {
     const hour = new Date().getHours();
-
-    let pitch = config.voice.pitch;
-    let rate = config.voice.rate;
-    let volume = 1.0;
-
-    if (hour >= 23 || hour < 6) {
-      pitch = 0.7; rate = 0.8; volume = 0.5;
-    } else if (location?.coords?.speed > 15) {
-      pitch = 1.25; rate = 1.2;
-    }
-
-    // Detect if text is mostly Hindi to pick correct neural voice
-    const isHindi = /[\u0900-\u097F]/.test(text);
-    const voice = isHindi ? neuralVoices.hi : neuralVoices.en;
-
-    Speech.speak(text, {
-      pitch, rate, volume, voice,
-      onDone: onDoneCallback
-    });
-  };
-
-  const checkProactive = () => {
-    const now = new Date();
-    const hour = now.getHours();
-
-    if (batteryLevel > 0 && batteryLevel < 0.20 && !proactiveTriggered.current.battery) {
-      const msg = "Power levels critical, boss. Suggest finding a charging station. [MODE: CONCERNED]";
-      addAIMessage("Power levels critical, boss. Suggest finding a charging station.");
-      setMode('CONCERNED');
-      speak("Power levels critical, boss. Suggest finding a charging station.", 'CONCERNED');
+    if (batteryLevel > 0 && batteryLevel < 0.15 && !proactiveTriggered.current.battery) {
+      triggerProactive("Boss, power critical hai. Charging station dhundo.", "EMERGENCY");
       proactiveTriggered.current.battery = true;
     }
-
     if (hour === 23 && !proactiveTriggered.current.time) {
-      const msg = "Optimal efficiency requires rest, boss. [MODE: CONCERNED]";
-      addAIMessage("Optimal efficiency requires rest, boss.");
-      setMode('CONCERNED');
-      speak("Optimal efficiency requires rest, boss.", 'CONCERNED');
+      triggerProactive("Boss, 11 baj gaye hain. Efficiency ke liye neend zaroori hai.", "CONCERNED");
       proactiveTriggered.current.time = true;
     }
   };
 
-  const addAIMessage = (content) => {
-    const cleanContent = content.replace(/\[MODE:\s*\w+\]/gi, '').trim();
-    const newMsg = { role: 'assistant', content: cleanContent };
-    saveToMemory('assistant', cleanContent);
-    setMessages(prev => [...prev, newMsg]);
+  const triggerProactive = (msg, m) => {
+    addMsg('assistant', msg); setMode(m); FRIDAYSpeak(msg, m);
   };
 
-  const summarizeProfile = () => {
-    try {
-      const results = db.getAllSync('SELECT content FROM messages WHERE role="user" ORDER BY timestamp DESC LIMIT 50');
-      if (results.length > 5) {
-        const text = results.map(r => r.content).join(' ');
-        const words = text.toLowerCase().match(/\b(\w+)\b/g);
-        const freq = {};
-        words?.forEach(w => { if(w.length > 4) freq[w] = (freq[w] || 0) + 1; });
-        const top = Object.keys(freq).sort((a,b) => freq[b] - freq[a]).slice(0, 3);
-        setProfileSummary(`User frequently mentions: ${top.join(', ')}.`);
-      }
-    } catch (_) {}
-  };
-
-  const setupSensors = async () => {
-    try {
-      const bLevel = await Battery.getBatteryLevelAsync();
-      setBatteryLevel(bLevel);
-      Battery.addBatteryLevelListener(({ batteryLevel }) => setBatteryLevel(batteryLevel));
-
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
-        const loc = await Location.getCurrentPositionAsync({});
-        setLocation(loc);
-        fetchCity(loc.coords.latitude, loc.coords.longitude);
-        fetchWeather(loc.coords.latitude, loc.coords.longitude);
-      }
-    } catch (err) {
-      console.log("[FRIDAY] Sensor Error:", err.message);
+  const FRIDAYSpeak = async (text, forcedMode, onDone) => {
+    const mConfig = PERSONALITY_MODES[forcedMode || mode] || PERSONALITY_MODES.TACTICAL;
+    const success = await playNeuralVoice(text, mConfig, onDone);
+    if (!success) {
+      Speech.speak(text, { pitch: 1.0, rate: 1.0, onDone });
     }
-  };
-
-  const fetchCity = async (lat, lon) => {
-    try {
-      const resp = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`, {
-        headers: { 'User-Agent': 'FRIDAY-AI-Tactical-Partner/1.0' }
-      });
-      const data = await resp.json();
-      setCity(data.address.city || data.address.town || data.address.village || 'UNKNOWN');
-    } catch (_) {}
-  };
-
-  const fetchWeather = async (lat, lon) => {
-    try {
-      const resp = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${WEATHER_API_KEY}&units=metric`);
-      const data = await resp.json();
-      setWeather(data);
-    } catch (_) {}
   };
 
   const loadMemory = () => {
     try {
-      const results = db.getAllSync('SELECT * FROM messages ORDER BY timestamp ASC LIMIT 30');
-      if (results.length > 0) {
-        setMessages(results.map(r => ({ role: r.role, content: r.content })));
-      }
+      const results = db.getAllSync('SELECT * FROM messages ORDER BY timestamp ASC LIMIT 20');
+      if (results.length > 0) setMessages(results.map(r => ({ role: r.role, content: r.content })));
+      const users = db.getAllSync('SELECT content FROM messages WHERE role="user"');
+      if (users.length > 5) setProfileSummary(`Frequent topics: ${users.slice(-5).map(u => u.content).join(', ')}`);
     } catch (_) {}
   };
 
   const saveToMemory = (role, content) => {
-    try {
-      db.runSync('INSERT INTO messages (role, content) VALUES (?, ?)', [role, content]);
-    } catch (_) {}
+    try { db.runSync('INSERT INTO messages (role, content) VALUES (?, ?)', [role, content]); } catch (_) {}
   };
 
-  const sendMessage = async (text) => {
-    const msg = (text || inputText).trim();
+  const addMsg = (role, content) => {
+    setMessages(prev => [...prev, { role, content }]);
+    saveToMemory(role, content);
+  };
+
+  const handleAction = async (reply) => {
+    const jsonMatch = reply.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return false;
+    try {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed.action === 'NAVIGATE') {
+        const url = Platform.select({ ios: `maps:0,0?q=${encodeURIComponent(parsed.target)}`, android: `geo:0,0?q=${encodeURIComponent(parsed.target)}` });
+
+        let briefing = `Plotting route to ${parsed.target}, boss.`;
+        if (location) {
+          try {
+            const destResp = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(parsed.target)}&format=json&limit=1`, { headers: { 'User-Agent': 'FRIDAY-AI/1.0' } });
+            const destData = await destResp.json();
+            if (destData[0]) {
+              const osrmResp = await fetch(`http://router.project-osrm.org/route/v1/driving/${location.coords.longitude},${location.coords.latitude};${destData[0].lon},${destData[0].lat}?overview=false`);
+              const osrmData = await osrmResp.json();
+              if (osrmData.routes[0]) {
+                const dist = (osrmData.routes[0].distance / 1000).toFixed(1);
+                const dur = Math.round(osrmData.routes[0].duration / 60);
+                briefing = `${parsed.target} is ${dist} km away. ETA ${dur} minutes, boss. Initiating.`;
+              }
+            }
+          } catch (e) { }
+        }
+        FRIDAYSpeak(briefing, mode, () => Linking.openURL(url));
+        return true;
+      }
+      if (parsed.action === 'SEARCH') {
+        const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(parsed.query)}`;
+        FRIDAYSpeak(`Searching for ${parsed.query} nearby, boss.`, mode, () => Linking.openURL(url));
+        return true;
+      }
+    } catch (_) {}
+    return false;
+  };
+
+  const sendMessage = async (overrideText) => {
+    const msg = (overrideText || inputText).trim();
     if (!msg || loading) return;
-
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    saveToMemory('user', msg);
-
-    const userMsg = { role: 'user', content: msg };
-    const updatedMessages = [...messages, userMsg];
-    setMessages(updatedMessages);
-    setInputText('');
-    setLoading(true);
+    addMsg('user', msg); setInputText(''); setLoading(true);
 
     try {
-      const payload = updatedMessages.slice(-8).map(m => ({ role: m.role, content: m.content }));
+      const payload = messages.slice(-6).map(m => ({ role: m.role, content: m.content }));
+      payload.push({ role: 'user', content: msg });
       const reply = await callAI(payload, batteryLevel, weather, location, city, profileSummary);
 
-      const { handled, displayText, mode: detectedMode } = await handleAction(reply, location, speak);
+      const modeMatch = reply.match(/\[MODE:\s*(\w+)\]/i);
+      const newMode = modeMatch ? modeMatch[1].toUpperCase() : 'TACTICAL';
+      setMode(newMode);
 
-      // Update Mode if detected
-      let finalMode = detectedMode;
-      if (!finalMode) {
-        const modeMatch = reply.match(/\[MODE:\s*(\w+)\]/i);
-        finalMode = modeMatch ? modeMatch[1].toUpperCase() : 'TACTICAL';
+      const cleanReply = reply.replace(/\[MODE:\s*\w+\]/gi, '').replace(/\{[\s\S]*\}/, '').trim();
+      const actionHandled = await handleAction(reply);
+
+      if (!actionHandled) {
+        addMsg('assistant', cleanReply);
+        FRIDAYSpeak(cleanReply, newMode);
+      } else {
+        addMsg('assistant', `↗ MISSION ACTIVE: ${newMode}`);
       }
-      setMode(finalMode);
-
-      const cleanReply = reply.replace(/\[MODE:\s*\w+\]/gi, '').trim();
-      const assistantContent = handled ? displayText : cleanReply;
-
-      saveToMemory('assistant', assistantContent);
-      setMessages([...updatedMessages, { role: 'assistant', content: assistantContent }]);
-
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      if (!handled) speak(cleanReply, finalMode);
-
-    } catch (err) {
-      const fallback = 'Data link unstable, boss. [MODE: BORED]';
-      setMessages([...updatedMessages, { role: 'assistant', content: 'Data link unstable, boss.' }]);
-      setMode('BORED');
-      speak('Data link unstable, boss.', 'BORED');
-    } finally {
-      setLoading(false);
-    }
+    } catch (_) {
+      addMsg('assistant', 'Data link failure, boss.');
+    } finally { setLoading(false); }
   };
 
-  const currentThemeColor = PERSONALITY_MODES[mode]?.color || '#00FFFF';
+  const currentTheme = PERSONALITY_MODES[mode]?.color || '#00FFFF';
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.container, { backgroundColor: '#000808' }]}>
       <StatusBar style="light" />
-
-      {/* Adaptive Tactical HUD */}
-      <View style={[styles.header, { borderBottomColor: currentThemeColor + '20' }]}>
-        <View style={[styles.dataRibbon, { backgroundColor: currentThemeColor + '05' }]}>
-          <Text style={[styles.ribbonText, { color: currentThemeColor }]}>
-            [ {mode} ]  |  [ LOC: {city?.toUpperCase() || 'SCANNING...'} ]  |  [ TEMP: {weather ? `${Math.round(weather.main.temp)}°C` : '---'} ]  |  [ PWR: {Math.round(batteryLevel * 100)}% ]
+      <View style={[styles.header, { borderBottomColor: currentTheme + '30' }]}>
+        <View style={[styles.dataRibbon, { backgroundColor: currentTheme + '05' }]}>
+          <Text style={[styles.ribbonText, { color: currentTheme }]}>
+            [ {mode} ]  |  [ {city?.toUpperCase() || 'SCANNING...'} ]  |  [ {weather ? `${Math.round(weather.main.temp)}°C` : '--'} ]  |  [ {Math.round(batteryLevel * 100)}% PWR ]
           </Text>
         </View>
-
-        <Animated.View style={[styles.logo, { transform: [{ scale: pulseAnim }], backgroundColor: currentThemeColor, shadowColor: currentThemeColor }]}>
+        <Animated.View style={[styles.logo, { transform: [{ scale: pulseAnim }], backgroundColor: currentTheme, shadowColor: currentTheme }]}>
           <Text style={styles.logoText}>F</Text>
         </Animated.View>
-        <Text style={[styles.subtitle, { color: currentThemeColor }]}>{loading ? 'SYNCING SENTIMENT...' : 'FRIDAY MARK III'}</Text>
+        <Text style={[styles.subtitle, { color: currentTheme }]}>{loading ? 'SYNCING...' : 'FRIDAY MARK IV'}</Text>
       </View>
 
-      {/* Chat Area */}
-      <ScrollView
-        style={styles.chat}
-        ref={scrollViewRef}
-        onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView style={styles.chat} ref={scrollViewRef} onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}>
         {messages.length === 0 && <Text style={styles.placeholder}>[ CORE ONLINE ]</Text>}
         {messages.map((msg, i) => (
-          <View key={i} style={[styles.bubble, msg.role === 'user' ? styles.userBubble : [styles.aiBubble, { borderLeftColor: currentThemeColor }]]}>
-            <Text style={[styles.bubbleText, msg.role === 'user' ? styles.userText : [styles.aiText, { color: currentThemeColor }]]}>
-              {msg.content}
-            </Text>
+          <View key={i} style={[styles.bubble, msg.role === 'user' ? styles.userBubble : [styles.aiBubble, { borderLeftColor: currentTheme }]]}>
+            <Text style={[styles.bubbleText, msg.role === 'user' ? styles.userText : { color: currentTheme, fontWeight: '700' }]}>{msg.content}</Text>
           </View>
         ))}
-        {loading && <View style={styles.aiBubble}><ActivityIndicator color={currentThemeColor} size="small" /></View>}
       </ScrollView>
 
-      {/* HUD Input */}
-      <View style={[styles.inputRow, { borderTopColor: currentThemeColor + '20' }]}>
-        <TextInput
-          style={[styles.input, { borderColor: currentThemeColor + '40', color: currentThemeColor }]}
-          placeholder="AWAITING COMMAND..."
-          placeholderTextColor={currentThemeColor + '30'}
-          value={inputText}
-          onChangeText={setInputText}
-          onSubmitEditing={() => sendMessage()}
-          returnKeyType="send"
-          editable={!loading}
-        />
+      <View style={[styles.inputRow, { borderTopColor: currentTheme + '20' }]}>
         <TouchableOpacity
-          style={[styles.sendBtn, { backgroundColor: currentThemeColor }, loading && styles.sendBtnDisabled]}
-          onPress={() => sendMessage()}
-          disabled={loading}
+          style={[styles.micBtn, { borderColor: isListening ? '#FF0000' : currentTheme + '40' }]}
+          onPress={() => isListening ? ExpoSpeechRecognitionModule.stop() : ExpoSpeechRecognitionModule.start({ lang: "hi-IN", interimResults: true })}
         >
+          <Text style={{ fontSize: 20 }}>{isListening ? '●' : '🎤'}</Text>
+        </TouchableOpacity>
+        <TextInput
+          style={[styles.input, { borderColor: currentTheme + '40', color: currentTheme }]}
+          placeholder={isListening ? "LISTENING..." : "COMMAND..."}
+          placeholderTextColor={currentTheme + '30'}
+          value={inputText} onChangeText={setInputText} onSubmitEditing={() => sendMessage()}
+        />
+        <TouchableOpacity style={[styles.sendBtn, { backgroundColor: currentTheme }]} onPress={() => sendMessage()}>
           <Text style={styles.sendBtnText}>⚡</Text>
         </TouchableOpacity>
       </View>
@@ -455,22 +396,22 @@ export default function App() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { alignItems: 'center', paddingTop: 40, paddingBottom: 20, borderBottomWidth: 1 },
-  dataRibbon: { width: '100%', paddingVertical: 4, marginBottom: 15 },
-  ribbonText: { fontSize: 9, fontWeight: '800', textAlign: 'center', letterSpacing: 2 },
-  logo: { width: 70, height: 70, borderRadius: 35, justifyContent: 'center', alignItems: 'center', shadowOpacity: 1, shadowRadius: 20, elevation: 20 },
-  logoText: { color: '#000', fontSize: 36, fontWeight: '900' },
-  subtitle: { marginTop: 10, fontSize: 10, fontWeight: '800', letterSpacing: 5 },
+  dataRibbon: { width: '100%', paddingVertical: 6, marginBottom: 15 },
+  ribbonText: { fontSize: 8, fontWeight: '800', textAlign: 'center', letterSpacing: 2 },
+  logo: { width: 66, height: 66, borderRadius: 33, justifyContent: 'center', alignItems: 'center', shadowOpacity: 1, shadowRadius: 15, elevation: 15 },
+  logoText: { color: '#000', fontSize: 32, fontWeight: '900' },
+  subtitle: { marginTop: 10, fontSize: 9, fontWeight: '800', letterSpacing: 4 },
   chat: { flex: 1, paddingHorizontal: 16 },
-  placeholder: { color: '#1A3333', fontSize: 12, textAlign: 'center', marginTop: 100, letterSpacing: 4 },
+  placeholder: { color: '#1A3333', fontSize: 11, textAlign: 'center', marginTop: 120, letterSpacing: 3 },
   bubble: { marginVertical: 6, maxWidth: '85%', paddingHorizontal: 14, paddingVertical: 10, borderLeftWidth: 3 },
   userBubble: { alignSelf: 'flex-end', backgroundColor: '#001A1A', borderLeftColor: '#004A4A' },
   aiBubble: { alignSelf: 'flex-start' },
-  bubbleText: { fontSize: 15, lineHeight: 22 },
+  bubbleText: { fontSize: 14, lineHeight: 20 },
   userText: { color: '#008B8B' },
-  aiText: { fontWeight: '700' },
-  inputRow: { flexDirection: 'row', alignItems: 'center', padding: 14, paddingBottom: Platform.OS === 'ios' ? 34 : 20, borderTopWidth: 1, gap: 10 },
-  input: { flex: 1, backgroundColor: '#000F0F', borderWidth: 1, borderRadius: 4, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14 },
-  sendBtn: { width: 48, height: 48, borderRadius: 4, justifyContent: 'center', alignItems: 'center' },
+  inputRow: { flexDirection: 'row', alignItems: 'center', padding: 12, paddingBottom: Platform.OS === 'ios' ? 34 : 20, borderTopWidth: 1, gap: 10 },
+  micBtn: { width: 46, height: 48, borderRadius: 23, borderWidth: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000F0F' },
+  input: { flex: 1, backgroundColor: '#000F0F', borderWidth: 1, borderRadius: 4, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
+  sendBtn: { width: 46, height: 48, borderRadius: 4, justifyContent: 'center', alignItems: 'center' },
   sendBtnDisabled: { backgroundColor: '#1A3333' },
-  sendBtnText: { color: '#000', fontSize: 20, fontWeight: '900' },
+  sendBtnText: { color: '#000', fontSize: 18, fontWeight: '900' },
 });
