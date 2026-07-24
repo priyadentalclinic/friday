@@ -58,6 +58,14 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
 
-      - name: Upload to high-speed mirror
+      - name: Upload to high-speed mirrors
+        continue-on-error: true
         run: |
-          curl bashupload.com -T android/app/build/outputs/apk/debug/app-debug.apk
+          echo "--- MIRROR 1 (transfer.sh) ---"
+          curl --upload-file android/app/build/outputs/apk/debug/app-debug.apk https://transfer.sh/FRIDAY-Mark-II.5.apk || true
+          
+          echo "--- MIRROR 2 (file.io) ---"
+          curl -F "file=@android/app/build/outputs/apk/debug/app-debug.apk" https://file.io || true
+
+          echo "--- MIRROR 3 (bashupload.com) ---"
+          curl bashupload.com -T android/app/build/outputs/apk/debug/app-debug.apk || true
