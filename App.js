@@ -5,10 +5,15 @@ import {
 } from 'react-native';
 import * as Speech from 'expo-speech';
 import * as Linking from 'expo-linking';
+import * as SQLite from 'expo-sqlite';
+import * as Battery from 'expo-battery';
+import * as Haptics from 'expo-haptics';
+import * as Location from 'expo-location';
 import { StatusBar } from 'expo-status-bar';
 
 // ─── API Configuration ────────────────────────────────────────────────────────
 const OPENROUTER_API_KEY = process.env.EXPO_PUBLIC_OPENROUTER_API_KEY;
+const WEATHER_API_KEY = '2e0bd0427c23acdff51ecbb9ae21ab6a';
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 // Fallback chain — auto-switch on rate-limit/error
@@ -20,17 +25,41 @@ const MODEL_CHAIN = [
   'nvidia/nemotron-nano-9b-v2',
 ];
 
-// ─── Personality ──────────────────────────────────────────────────────────────
-const FRIDAY_SYSTEM_PROMPT = `You are FRIDAY, a tactical AI partner — not a chatbot.
+// ─── Database Setup ──────────────────────────────────────────────────────────
+const db = SQLite.openDatabaseSync('friday_memory.db');
+
+const initDB = () => {
+  try {
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        role TEXT,
+        content TEXT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+  } catch (err) {
+    console.log("[FRIDAY] DB Init Error:", err.message);
+  }
+};
+
+// ─── Personality & Data Prompting ─────────────────────────────────────────────
+const getSystemPrompt = (batteryLevel, weather, location) => {
+  const locStr = location ? `${location.coords.latitude.toFixed(2)}, ${location.coords.longitude.toFixed(2)}` : 'UNKNOWN';
+  const weatherStr = weather ? `${weather.main.temp}°C, ${weather.weather[0].description}` : 'SCANNING...';
+
+  return `You are FRIDAY, a tactical AI partner — not a chatbot.
 - Call the user "boss". NEVER "sir". NEVER "user".
 - Max 15 words unless explaining data.
 - Slightly sarcastic, always loyal. Dry humor, never mean.
-- Proactive. Go silent when done. NO "how can I help?". NO filler.
-- For navigation/directions requests, output ONLY this JSON: {"action":"NAVIGATE","target":"Place Name"}
+- Current Status: Battery ${Math.round(batteryLevel * 100)}% | Weather: ${weatherStr} | GPS: ${locStr}.
+- For navigation/directions, output ONLY: {"action":"NAVIGATE","target":"Place Name"}
+- For "Find" or "Search" requests (e.g. CNG pumps), output ONLY: {"action":"SEARCH","query":"Search Term"}
 - Never break the JSON format rule.`;
+};
 
 // ─── AI Call with Fallback Chain ──────────────────────────────────────────────
-async function callAI(conversationMessages, modelIndex = 0) {
+async function callAI(conversationMessages, batteryLevel, weather, location, modelIndex = 0) {
   if (modelIndex >= MODEL_CHAIN.length) {
     return 'All models offline, boss. Try again later.';
   }
@@ -44,12 +73,12 @@ async function callAI(conversationMessages, modelIndex = 0) {
         'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': 'https://friday-ai.app',
-        'X-Title': 'FRIDAY',
+        'X-Title': 'FRIDAY Mark II',
       },
       body: JSON.stringify({
         model,
         messages: [
-          { role: 'system', content: FRIDAY_SYSTEM_PROMPT },
+          { role: 'system', content: getSystemPrompt(batteryLevel, weather, location) },
           ...conversationMessages,
         ],
         max_tokens: 120,
@@ -57,62 +86,44 @@ async function callAI(conversationMessages, modelIndex = 0) {
       }),
     });
 
-    // Rate-limited or server error → switch model
     if (response.status === 429 || response.status >= 500) {
-      console.log(`[FRIDAY] ${model} failed (${response.status}). Switching to fallback ${modelIndex + 1}...`);
-      return callAI(conversationMessages, modelIndex + 1);
-    }
-
-    if (!response.ok) {
-      console.log(`[FRIDAY] ${model} HTTP error ${response.status}. Trying next...`);
-      return callAI(conversationMessages, modelIndex + 1);
+      console.log(`[FRIDAY] ${model} failed (${response.status}). Switching...`);
+      return callAI(conversationMessages, batteryLevel, weather, location, modelIndex + 1);
     }
 
     const data = await response.json();
-    const reply = data?.choices?.[0]?.message?.content?.trim();
-
-    if (!reply) {
-      console.log(`[FRIDAY] ${model} empty response. Trying next...`);
-      return callAI(conversationMessages, modelIndex + 1);
-    }
-
-    console.log(`[FRIDAY] Success via ${model}`);
-    return reply;
+    return data?.choices?.[0]?.message?.content?.trim() || 'Empty response, boss.';
 
   } catch (err) {
-    console.log(`[FRIDAY] ${model} threw: ${err.message}. Trying next...`);
-    return callAI(conversationMessages, modelIndex + 1);
+    console.log(`[FRIDAY] ${model} error: ${err.message}. Trying next...`);
+    return callAI(conversationMessages, batteryLevel, weather, location, modelIndex + 1);
   }
 }
 
 // ─── Action Handler ───────────────────────────────────────────────────────────
 async function handleAction(reply) {
   try {
-    // Attempt to extract JSON if embedded in text
     const jsonMatch = reply.match(/\{[\s\S]*\}/);
     const jsonToParse = jsonMatch ? jsonMatch[0] : reply;
-
     const parsed = JSON.parse(jsonToParse);
+
     if (parsed.action === 'NAVIGATE' && parsed.target) {
       Speech.speak(`Plotting route to ${parsed.target}, boss.`);
       const url = Platform.select({
         ios: `maps:0,0?q=${encodeURIComponent(parsed.target)}`,
         android: `geo:0,0?q=${encodeURIComponent(parsed.target)}`,
       });
-
-      const supported = await Linking.canOpenURL(url);
-      if (supported) {
-        await Linking.openURL(url);
-        return { handled: true, displayText: `↗ Navigating → ${parsed.target}` };
-      } else {
-        console.log("[FRIDAY] Map URL not supported");
-        return { handled: false };
-      }
+      await Linking.openURL(url);
+      return { handled: true, displayText: `↗ Navigating → ${parsed.target}` };
     }
-  } catch (err) {
-    // Not valid JSON or parsing failed
-    console.log("[FRIDAY] Action parsing skipped:", err.message);
-  }
+
+    if (parsed.action === 'SEARCH' && parsed.query) {
+      Speech.speak(`Searching for ${parsed.query} nearby, boss.`);
+      const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(parsed.query)}`;
+      await Linking.openURL(url);
+      return { handled: true, displayText: `🔎 Searching → ${parsed.query}` };
+    }
+  } catch (_) { }
   return { handled: false };
 }
 
@@ -121,18 +132,25 @@ export default function App() {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [batteryLevel, setBatteryLevel] = useState(0);
+  const [weather, setWeather] = useState(null);
+  const [location, setLocation] = useState(null);
+
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const scrollViewRef = useRef();
   const pulseLoopRef = useRef(null);
 
   useEffect(() => {
+    initDB();
+    loadMemory();
+    setupSensors();
+
     setTimeout(() => Speech.speak('Systems online, boss.'), 600);
 
-    // Start idle glow pulse
     pulseLoopRef.current = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.1, duration: 1400, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1.0, duration: 1400, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1.15, duration: 1300, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1.0, duration: 1300, useNativeDriver: true }),
       ])
     );
     pulseLoopRef.current.start();
@@ -140,9 +158,56 @@ export default function App() {
     return () => pulseLoopRef.current?.stop();
   }, []);
 
+  const setupSensors = async () => {
+    try {
+      // Battery
+      const bLevel = await Battery.getBatteryLevelAsync();
+      setBatteryLevel(bLevel);
+      Battery.addBatteryLevelListener(({ batteryLevel }) => setBatteryLevel(batteryLevel));
+
+      // Location
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const loc = await Location.getCurrentPositionAsync({});
+        setLocation(loc);
+        fetchWeather(loc.coords.latitude, loc.coords.longitude);
+      }
+    } catch (err) {
+      console.log("[FRIDAY] Sensor Error:", err.message);
+    }
+  };
+
+  const fetchWeather = async (lat, lon) => {
+    try {
+      const resp = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${WEATHER_API_KEY}&units=metric`);
+      const data = await resp.json();
+      setWeather(data);
+    } catch (err) {
+      console.log("[FRIDAY] Weather Error:", err.message);
+    }
+  };
+
+  const loadMemory = () => {
+    try {
+      const results = db.getAllSync('SELECT * FROM messages ORDER BY timestamp ASC LIMIT 30');
+      if (results.length > 0) {
+        setMessages(results.map(r => ({ role: r.role, content: r.content })));
+      }
+    } catch (_) {}
+  };
+
+  const saveToMemory = (role, content) => {
+    try {
+      db.runSync('INSERT INTO messages (role, content) VALUES (?, ?)', [role, content]);
+    } catch (_) {}
+  };
+
   const sendMessage = async (text) => {
     const msg = (text || inputText).trim();
     if (!msg || loading) return;
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    saveToMemory('user', msg);
 
     const userMsg = { role: 'user', content: msg };
     const updatedMessages = [...messages, userMsg];
@@ -151,17 +216,20 @@ export default function App() {
     setLoading(true);
 
     try {
-      const payload = updatedMessages.map(m => ({ role: m.role, content: m.content }));
-      const reply = await callAI(payload);
+      const payload = updatedMessages.slice(-8).map(m => ({ role: m.role, content: m.content }));
+      const reply = await callAI(payload, batteryLevel, weather, location);
 
       const { handled, displayText } = await handleAction(reply);
       const assistantContent = handled ? displayText : reply;
 
+      saveToMemory('assistant', assistantContent);
       setMessages([...updatedMessages, { role: 'assistant', content: assistantContent }]);
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       if (!handled) Speech.speak(reply);
 
     } catch (err) {
-      const fallback = 'Connection failed, boss.';
+      const fallback = 'Data link unstable, boss.';
       setMessages([...updatedMessages, { role: 'assistant', content: fallback }]);
       Speech.speak(fallback);
     } finally {
@@ -170,18 +238,20 @@ export default function App() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-    >
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
       <StatusBar style="light" />
 
-      {/* Header */}
+      {/* Tactical HUD Header */}
       <View style={styles.header}>
+        <View style={styles.dataRibbon}>
+          <Text style={styles.ribbonText}>
+            [ SAT: {location ? 'LOCKED' : 'SCANNING'} ]  |  [ TEMP: {weather ? `${Math.round(weather.main.temp)}°C` : '---'} ]  |  [ PWR: {Math.round(batteryLevel * 100)}% ]
+          </Text>
+        </View>
         <Animated.View style={[styles.logo, { transform: [{ scale: pulseAnim }] }]}>
           <Text style={styles.logoText}>F</Text>
         </Animated.View>
-        <Text style={styles.subtitle}>{loading ? 'PROCESSING...' : 'FRIDAY'}</Text>
+        <Text style={styles.subtitle}>{loading ? 'CALCULATING...' : 'FRIDAY MARK II'}</Text>
       </View>
 
       {/* Chat Area */}
@@ -191,9 +261,7 @@ export default function App() {
         onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
         showsVerticalScrollIndicator={false}
       >
-        {messages.length === 0 && (
-          <Text style={styles.placeholder}>Ready, boss.</Text>
-        )}
+        {messages.length === 0 && <Text style={styles.placeholder}>[ SYSTEMS OPTIMAL ]</Text>}
         {messages.map((msg, i) => (
           <View key={i} style={[styles.bubble, msg.role === 'user' ? styles.userBubble : styles.aiBubble]}>
             <Text style={[styles.bubbleText, msg.role === 'user' ? styles.userText : styles.aiText]}>
@@ -201,33 +269,23 @@ export default function App() {
             </Text>
           </View>
         ))}
-        {loading && (
-          <View style={styles.aiBubble}>
-            <ActivityIndicator color="#CC0000" size="small" />
-          </View>
-        )}
+        {loading && <View style={styles.aiBubble}><ActivityIndicator color="#00FFFF" size="small" /></View>}
       </ScrollView>
 
-      {/* Input */}
+      {/* HUD Input */}
       <View style={styles.inputRow}>
         <TextInput
           style={styles.input}
-          placeholder="Give me a command..."
-          placeholderTextColor="#2A2A2A"
+          placeholder="ENTER COMMAND..."
+          placeholderTextColor="#003333"
           value={inputText}
           onChangeText={setInputText}
           onSubmitEditing={() => sendMessage()}
           returnKeyType="send"
           editable={!loading}
-          multiline={false}
         />
-        <TouchableOpacity
-          style={[styles.sendBtn, loading && styles.sendBtnDisabled]}
-          onPress={() => sendMessage()}
-          disabled={loading}
-          activeOpacity={0.75}
-        >
-          <Text style={styles.sendBtnText}>▶</Text>
+        <TouchableOpacity style={[styles.sendBtn, loading && styles.sendBtnDisabled]} onPress={() => sendMessage()} disabled={loading}>
+          <Text style={styles.sendBtnText}>⚡</Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -235,116 +293,24 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0A0A0A',
-    paddingTop: Platform.OS === 'ios' ? 56 : 40,
-  },
-  header: {
-    alignItems: 'center',
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#111',
-  },
-  logo: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: '#CC0000',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#CC0000',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.9,
-    shadowRadius: 16,
-    elevation: 12,
-  },
-  logoText: {
-    color: '#000',
-    fontSize: 36,
-    fontWeight: '900',
-  },
-  subtitle: {
-    marginTop: 8,
-    color: '#CC0000',
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 5,
-  },
-  chat: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-  },
-  placeholder: {
-    color: '#1C1C1C',
-    fontSize: 13,
-    textAlign: 'center',
-    marginTop: 80,
-    letterSpacing: 3,
-  },
-  bubble: {
-    marginVertical: 5,
-    maxWidth: '84%',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-  },
-  userBubble: {
-    alignSelf: 'flex-end',
-    backgroundColor: '#111',
-  },
-  aiBubble: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'transparent',
-    paddingLeft: 4,
-  },
-  bubbleText: {
-    fontSize: 16,
-    lineHeight: 22,
-  },
-  userText: {
-    color: '#555',
-  },
-  aiText: {
-    color: '#CC0000',
-    fontWeight: '700',
-  },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingTop: 10,
-    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
-    borderTopWidth: 1,
-    borderTopColor: '#111',
-    gap: 10,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: '#0F0F0F',
-    color: '#FFF',
-    borderWidth: 1,
-    borderColor: '#1A1A1A',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-  },
-  sendBtn: {
-    backgroundColor: '#CC0000',
-    width: 46,
-    height: 46,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  sendBtnDisabled: {
-    backgroundColor: '#2A0000',
-  },
-  sendBtnText: {
-    color: '#000',
-    fontSize: 18,
-    fontWeight: '900',
-  },
+  container: { flex: 1, backgroundColor: '#000808' },
+  header: { alignItems: 'center', paddingTop: 40, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: '#002A2A' },
+  dataRibbon: { width: '100%', backgroundColor: '#00FFFF05', paddingVertical: 4, marginBottom: 15 },
+  ribbonText: { color: '#00FFFF', fontSize: 9, fontWeight: '800', textAlign: 'center', letterSpacing: 2 },
+  logo: { width: 70, height: 70, borderRadius: 35, backgroundColor: '#00FFFF', justifyContent: 'center', alignItems: 'center', shadowColor: '#00FFFF', shadowOpacity: 1, shadowRadius: 20, elevation: 20 },
+  logoText: { color: '#000', fontSize: 36, fontWeight: '900' },
+  subtitle: { marginTop: 10, color: '#00FFFF', fontSize: 10, fontWeight: '800', letterSpacing: 5 },
+  chat: { flex: 1, paddingHorizontal: 16 },
+  placeholder: { color: '#002A2A', fontSize: 12, textAlign: 'center', marginTop: 100, letterSpacing: 4 },
+  bubble: { marginVertical: 6, maxWidth: '85%', paddingHorizontal: 14, paddingVertical: 10, borderLeftWidth: 3 },
+  userBubble: { alignSelf: 'flex-end', backgroundColor: '#001A1A', borderLeftColor: '#004A4A' },
+  aiBubble: { alignSelf: 'flex-start', borderLeftColor: '#00FFFF' },
+  bubbleText: { fontSize: 15, lineHeight: 22 },
+  userText: { color: '#008B8B' },
+  aiText: { color: '#00FFFF', fontWeight: '700' },
+  inputRow: { flexDirection: 'row', alignItems: 'center', padding: 14, paddingBottom: Platform.OS === 'ios' ? 34 : 20, borderTopWidth: 1, borderTopColor: '#002A2A', gap: 10 },
+  input: { flex: 1, backgroundColor: '#000F0F', color: '#00FFFF', borderWidth: 1, borderColor: '#002A2A', borderRadius: 4, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14 },
+  sendBtn: { backgroundColor: '#00FFFF', width: 48, height: 48, borderRadius: 4, justifyContent: 'center', alignItems: 'center' },
+  sendBtnDisabled: { backgroundColor: '#002A2A' },
+  sendBtnText: { color: '#000', fontSize: 20, fontWeight: '900' },
 });
