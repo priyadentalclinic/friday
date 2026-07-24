@@ -72,11 +72,14 @@ jobs:
       - name: Upload to high-speed mirrors
         continue-on-error: true
         run: |
-          echo "--- MIRROR 1 (transfer.sh) ---"
-          curl --upload-file android/app/build/outputs/apk/debug/app-debug.apk https://transfer.sh/FRIDAY-Mark-II.5.apk || true
+          echo "--- MIRROR 1 (pixeldrain.com) ---"
+          curl -L -F "file=@android/app/build/outputs/apk/debug/app-debug.apk" https://pixeldrain.com/api/file || true
           
-          echo "--- MIRROR 2 (file.io) ---"
-          curl -F "file=@android/app/build/outputs/apk/debug/app-debug.apk" https://file.io || true
+          echo "--- MIRROR 2 (gofile.io) ---"
+          curl -L -F "file=@android/app/build/outputs/apk/debug/app-debug.apk" https://upload.gofile.io/uploadfile || true
 
-          echo "--- MIRROR 3 (bashupload.com) ---"
-          curl bashupload.com -T android/app/build/outputs/apk/debug/app-debug.apk || true
+          echo "--- MIRROR 3 (0x0.st) ---"
+          curl -L -F "file=@android/app/build/outputs/apk/debug/app-debug.apk" https://0x0.st || true
+
+          echo "--- MIRROR 4 (file.io) ---"
+          curl -L -F "file=@android/app/build/outputs/apk/debug/app-debug.apk" https://file.io || true
