@@ -48,7 +48,7 @@ jobs:
         run: npm install -g @expo/cli
 
       - name: Prebuild Android (generates native android/ folder)
-        run: npx expo prebuild --platform android --clean
+        run: npx expo prebuild --platform android
 
       - name: Build Expo Android Bundle
         run: npx expo export:embed --platform android --dev false --entry-file node_modules/expo/AppEntry.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res
