@@ -25,6 +25,29 @@ const MODEL_CHAIN = [
   'nvidia/nemotron-nano-9b-v2',
 ];
 
+const PERSONALITY_MODES = {
+  TACTICAL: {
+    name: 'TACTICAL',
+    prompt: 'Short, mission-oriented, distance-focused. Call user "boss".',
+    voice: { pitch: 1.0, rate: 1.1 }
+  },
+  SARCASTIC: {
+    name: 'SARCASTIC',
+    prompt: 'Dry humor, witty, slightly judgmental but loyal. Call user "boss".',
+    voice: { pitch: 0.9, rate: 1.0 }
+  },
+  CONCERNED: {
+    name: 'CONCERNED',
+    prompt: 'Focus on user safety, health, and device efficiency. Call user "boss".',
+    voice: { pitch: 1.1, rate: 0.9 }
+  },
+  BOSS: {
+    name: 'BOSS',
+    prompt: 'Professional, high-level executive assistant style. Call user "boss".',
+    voice: { pitch: 1.0, rate: 1.0 }
+  }
+};
+
 // ─── Database Setup ──────────────────────────────────────────────────────────
 const db = SQLite.openDatabaseSync('friday_memory.db');
 
@@ -44,24 +67,25 @@ const initDB = () => {
 };
 
 // ─── Personality & Data Prompting ─────────────────────────────────────────────
-const getSystemPrompt = (batteryLevel, weather, location, city, routeData) => {
+const getSystemPrompt = (batteryLevel, weather, location, city, mode, profileSummary) => {
   const locStr = location ? `${location.coords.latitude.toFixed(4)}, ${location.coords.longitude.toFixed(4)}` : 'UNKNOWN';
   const weatherStr = weather ? `${weather.main.temp}°C, ${weather.weather[0].description}` : 'SCANNING...';
   const cityStr = city || 'SCANNING...';
-  const routeStr = routeData ? ` | Dest: ${routeData.distance}km, ${routeData.duration} min` : '';
+  const modeConfig = PERSONALITY_MODES[mode] || PERSONALITY_MODES.TACTICAL;
 
   return `You are FRIDAY, a tactical AI partner — not a chatbot.
+- Mode: ${modeConfig.prompt}
 - Call the user "boss". NEVER "sir". NEVER "user".
 - Max 15 words unless explaining data.
-- Slightly sarcastic, always loyal. Dry humor, never mean.
-- Status: Battery ${Math.round(batteryLevel * 100)}% | Weather: ${weatherStr} | Loc: ${cityStr} (${locStr})${routeStr}.
+- Status: Battery ${Math.round(batteryLevel * 100)}% | Weather: ${weatherStr} | Loc: ${cityStr} (${locStr}).
+- User Profile: ${profileSummary || 'Scanning historical logs...'}
 - For navigation, output ONLY: {"action":"NAVIGATE","target":"Place Name"}
 - For "Find" requests (e.g. CNG pumps), output ONLY: {"action":"SEARCH","query":"Search Term"}
 - Never break JSON format.`;
 };
 
 // ─── AI Call with Fallback Chain ──────────────────────────────────────────────
-async function callAI(conversationMessages, batteryLevel, weather, location, city, routeData, modelIndex = 0) {
+async function callAI(conversationMessages, batteryLevel, weather, location, city, mode, profileSummary, modelIndex = 0) {
   if (modelIndex >= MODEL_CHAIN.length) return 'All models offline, boss.';
   const model = MODEL_CHAIN[modelIndex];
 
@@ -72,12 +96,12 @@ async function callAI(conversationMessages, batteryLevel, weather, location, cit
         'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': 'https://friday-ai.app',
-        'X-Title': 'FRIDAY Mark II',
+        'X-Title': 'FRIDAY Mark II.5',
       },
       body: JSON.stringify({
         model,
         messages: [
-          { role: 'system', content: getSystemPrompt(batteryLevel, weather, location, city, routeData) },
+          { role: 'system', content: getSystemPrompt(batteryLevel, weather, location, city, mode, profileSummary) },
           ...conversationMessages,
         ],
         max_tokens: 120,
@@ -88,12 +112,12 @@ async function callAI(conversationMessages, batteryLevel, weather, location, cit
     const data = await response.json();
     return data?.choices?.[0]?.message?.content?.trim() || 'Empty response, boss.';
   } catch (err) {
-    return callAI(conversationMessages, batteryLevel, weather, location, city, routeData, modelIndex + 1);
+    return callAI(conversationMessages, batteryLevel, weather, location, city, mode, profileSummary, modelIndex + 1);
   }
 }
 
 // ─── Action Handler ───────────────────────────────────────────────────────────
-async function handleAction(reply, location) {
+async function handleAction(reply, location, speakFn) {
   try {
     const jsonMatch = reply.match(/\{[\s\S]*\}/);
     const jsonToParse = jsonMatch ? jsonMatch[0] : reply;
@@ -105,8 +129,7 @@ async function handleAction(reply, location) {
         android: `geo:0,0?q=${encodeURIComponent(parsed.target)}`,
       });
 
-      // Get OSRM route data if we have location
-      let routeInfo = "";
+      let briefing = `Plotting route to ${parsed.target}, boss.`;
       if (location) {
         try {
           const destResp = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(parsed.target)}&format=json&limit=1`, {
@@ -119,21 +142,19 @@ async function handleAction(reply, location) {
             if (osrmData.routes[0]) {
               const dist = (osrmData.routes[0].distance / 1000).toFixed(1);
               const dur = Math.round(osrmData.routes[0].duration / 60);
-              routeInfo = `${parsed.target} is ${dist} km away. ETA ${dur} minutes, boss.`;
+              briefing = `${parsed.target} is ${dist} km away. ETA ${dur} minutes, boss. Initiating navigation.`;
             }
           }
-        } catch (e) { console.log("[FRIDAY] OSRM Error:", e.message); }
+        } catch (e) { }
       }
 
-      Speech.speak(routeInfo || `Plotting route to ${parsed.target}, boss.`);
-      await Linking.openURL(url);
+      speakFn(briefing, () => Linking.openURL(url));
       return { handled: true, displayText: `↗ Navigating → ${parsed.target}` };
     }
 
     if (parsed.action === 'SEARCH' && parsed.query) {
-      Speech.speak(`Searching for ${parsed.query} nearby, boss.`);
       const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(parsed.query)}`;
-      await Linking.openURL(url);
+      speakFn(`Searching for ${parsed.query} nearby, boss.`, () => Linking.openURL(url));
       return { handled: true, displayText: `🔎 Searching → ${parsed.query}` };
     }
   } catch (_) { }
@@ -149,17 +170,21 @@ export default function App() {
   const [weather, setWeather] = useState(null);
   const [location, setLocation] = useState(null);
   const [city, setCity] = useState(null);
+  const [mode, setMode] = useState('TACTICAL');
+  const [profileSummary, setProfileSummary] = useState('');
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const scrollViewRef = useRef();
   const pulseLoopRef = useRef(null);
+  const proactiveTriggered = useRef({ battery: false, time: false });
 
   useEffect(() => {
     initDB();
     loadMemory();
     setupSensors();
+    summarizeProfile();
 
-    setTimeout(() => Speech.speak('Systems online, boss.'), 600);
+    setTimeout(() => speak('Systems online, boss.'), 600);
 
     pulseLoopRef.current = Animated.loop(
       Animated.sequence([
@@ -169,17 +194,84 @@ export default function App() {
     );
     pulseLoopRef.current.start();
 
-    return () => pulseLoopRef.current?.stop();
+    const proactiveInterval = setInterval(checkProactive, 60000);
+
+    return () => {
+      pulseLoopRef.current?.stop();
+      clearInterval(proactiveInterval);
+    };
   }, []);
+
+  const speak = (text, onDoneCallback = null) => {
+    const config = PERSONALITY_MODES[mode] || PERSONALITY_MODES.TACTICAL;
+    const hour = new Date().getHours();
+
+    let pitch = config.voice.pitch;
+    let rate = config.voice.rate;
+    let volume = 1.0;
+
+    if (hour >= 23 || hour < 6) {
+      pitch = 0.7;
+      rate = 0.8;
+      volume = 0.5;
+    } else if (location?.coords?.speed > 15) {
+      pitch = 1.3;
+      rate = 1.2;
+    }
+
+    Speech.speak(text, {
+      pitch,
+      rate,
+      volume,
+      onDone: onDoneCallback
+    });
+  };
+
+  const checkProactive = () => {
+    const now = new Date();
+    const hour = now.getHours();
+
+    if (batteryLevel > 0 && batteryLevel < 0.20 && !proactiveTriggered.current.battery) {
+      const msg = "Power levels critical, boss. Suggest finding a charging station.";
+      addAIMessage(msg);
+      speak(msg);
+      proactiveTriggered.current.battery = true;
+    }
+
+    if (hour === 23 && !proactiveTriggered.current.time) {
+      const msg = "It is past 23:00 hours. Optimal efficiency requires rest, boss.";
+      addAIMessage(msg);
+      speak(msg);
+      proactiveTriggered.current.time = true;
+    }
+  };
+
+  const addAIMessage = (content) => {
+    const newMsg = { role: 'assistant', content };
+    saveToMemory('assistant', content);
+    setMessages(prev => [...prev, newMsg]);
+  };
+
+  const summarizeProfile = () => {
+    try {
+      const results = db.getAllSync('SELECT content FROM messages WHERE role="user" ORDER BY timestamp DESC LIMIT 50');
+      if (results.length > 5) {
+        const text = results.map(r => r.content).join(' ');
+        const words = text.toLowerCase().match(/\b(\w+)\b/g);
+        const freq = {};
+        words?.forEach(w => { if(w.length > 4) freq[w] = (freq[w] || 0) + 1; });
+        const top = Object.keys(freq).sort((a,b) => freq[b] - freq[a]).slice(0, 3);
+        setProfileSummary(`User frequently mentions: ${top.join(', ')}.`);
+      }
+    } catch (_) {}
+  };
 
   const setupSensors = async () => {
     try {
-      // Battery
       const bLevel = await Battery.getBatteryLevelAsync();
       setBatteryLevel(bLevel);
       Battery.addBatteryLevelListener(({ batteryLevel }) => setBatteryLevel(batteryLevel));
 
-      // Location
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status === 'granted') {
         const loc = await Location.getCurrentPositionAsync({});
@@ -207,9 +299,7 @@ export default function App() {
       const resp = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${WEATHER_API_KEY}&units=metric`);
       const data = await resp.json();
       setWeather(data);
-    } catch (err) {
-      console.log("[FRIDAY] Weather Error:", err.message);
-    }
+    } catch (_) {}
   };
 
   const loadMemory = () => {
@@ -242,21 +332,21 @@ export default function App() {
 
     try {
       const payload = updatedMessages.slice(-8).map(m => ({ role: m.role, content: m.content }));
-      const reply = await callAI(payload, batteryLevel, weather, location, city);
+      const reply = await callAI(payload, batteryLevel, weather, location, city, mode, profileSummary);
 
-      const { handled, displayText } = await handleAction(reply, location);
+      const { handled, displayText } = await handleAction(reply, location, speak);
       const assistantContent = handled ? displayText : reply;
 
       saveToMemory('assistant', assistantContent);
       setMessages([...updatedMessages, { role: 'assistant', content: assistantContent }]);
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      if (!handled) Speech.speak(reply);
+      if (!handled) speak(reply);
 
     } catch (err) {
       const fallback = 'Data link unstable, boss.';
       setMessages([...updatedMessages, { role: 'assistant', content: fallback }]);
-      Speech.speak(fallback);
+      speak(fallback);
     } finally {
       setLoading(false);
     }
@@ -273,10 +363,23 @@ export default function App() {
             [ SAT: {location ? 'LOCKED' : 'SCANNING'} ]  |  [ LOC: {city?.toUpperCase() || 'SEARCHING...'} ]  |  [ TEMP: {weather ? `${Math.round(weather.main.temp)}°C` : '---'} ]  |  [ PWR: {Math.round(batteryLevel * 100)}% ]
           </Text>
         </View>
+
+        <View style={styles.modeRow}>
+          {Object.keys(PERSONALITY_MODES).map((m) => (
+            <TouchableOpacity
+              key={m}
+              onPress={() => { setMode(m); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+              style={[styles.modeBtn, mode === m && styles.modeBtnActive]}
+            >
+              <Text style={[styles.modeBtnText, mode === m && styles.modeBtnTextActive]}>{m.substring(0, 4)}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         <Animated.View style={[styles.logo, { transform: [{ scale: pulseAnim }] }]}>
           <Text style={styles.logoText}>F</Text>
         </Animated.View>
-        <Text style={styles.subtitle}>{loading ? 'CALCULATING...' : 'FRIDAY MARK II'}</Text>
+        <Text style={styles.subtitle}>{loading ? 'CALCULATING...' : `FRIDAY - ${mode} MODE`}</Text>
       </View>
 
       {/* Chat Area */}
@@ -320,7 +423,12 @@ export default function App() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000808' },
   header: { alignItems: 'center', paddingTop: 40, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: '#002A2A' },
-  dataRibbon: { width: '100%', backgroundColor: '#00FFFF05', paddingVertical: 4, marginBottom: 15 },
+  dataRibbon: { width: '100%', backgroundColor: '#00FFFF05', paddingVertical: 4, marginBottom: 10 },
+  modeRow: { flexDirection: 'row', gap: 6, marginBottom: 15 },
+  modeBtn: { paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: '#002A2A', borderRadius: 2 },
+  modeBtnActive: { borderColor: '#00FFFF', backgroundColor: '#00FFFF10' },
+  modeBtnText: { color: '#004A4A', fontSize: 8, fontWeight: '800' },
+  modeBtnTextActive: { color: '#00FFFF' },
   ribbonText: { color: '#00FFFF', fontSize: 9, fontWeight: '800', textAlign: 'center', letterSpacing: 2 },
   logo: { width: 70, height: 70, borderRadius: 35, backgroundColor: '#00FFFF', justifyContent: 'center', alignItems: 'center', shadowColor: '#00FFFF', shadowOpacity: 1, shadowRadius: 20, elevation: 20 },
   logoText: { color: '#000', fontSize: 36, fontWeight: '900' },
