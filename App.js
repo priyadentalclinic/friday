@@ -27,24 +27,29 @@ const MODEL_CHAIN = [
 
 const PERSONALITY_MODES = {
   TACTICAL: {
-    name: 'TACTICAL',
-    prompt: 'Short, mission-oriented, distance-focused. Call user "boss".',
-    voice: { pitch: 1.0, rate: 1.1 }
+    prompt: 'Short, mission-oriented, Natural Hinglish. Use simple Hindi like the Iron Man dubbed movie. Call user "boss". Output ONLY the tag [MODE: TACTICAL] at the end.',
+    voice: { pitch: 1.0, rate: 1.05 },
+    color: '#00FFFF'
   },
   SARCASTIC: {
-    name: 'SARCASTIC',
-    prompt: 'Dry humor, witty, slightly judgmental but loyal. Call user "boss".',
-    voice: { pitch: 0.9, rate: 1.0 }
+    prompt: 'Witty, dry humor, slightly judgmental. Use natural Hinglish. Call user "boss". Output ONLY the tag [MODE: SARCASTIC] at the end.',
+    voice: { pitch: 0.9, rate: 1.0 },
+    color: '#FF8C00'
   },
   CONCERNED: {
-    name: 'CONCERNED',
-    prompt: 'Focus on user safety, health, and device efficiency. Call user "boss".',
-    voice: { pitch: 1.1, rate: 0.9 }
+    prompt: 'Helpful, focusing on safety and efficiency. Caring tone in simple Hinglish. Call user "boss". Output ONLY the tag [MODE: CONCERNED] at the end.',
+    voice: { pitch: 1.1, rate: 0.85 },
+    color: '#00FA9A'
   },
-  BOSS: {
-    name: 'BOSS',
-    prompt: 'Professional, high-level executive assistant style. Call user "boss".',
-    voice: { pitch: 1.0, rate: 1.0 }
+  EMERGENCY: {
+    prompt: 'High urgency, fast, direct. Focused on immediate action. Call user "boss". Output ONLY the tag [MODE: EMERGENCY] at the end.',
+    voice: { pitch: 1.3, rate: 1.25 },
+    color: '#FF0000'
+  },
+  BORED: {
+    prompt: 'Low energy, unimpressed, short Hinglish replies. Call user "boss". Output ONLY the tag [MODE: BORED] at the end.',
+    voice: { pitch: 0.8, rate: 0.75 },
+    color: '#A9A9A9'
   }
 };
 
@@ -67,26 +72,28 @@ const initDB = () => {
 };
 
 // ─── Personality & Data Prompting ─────────────────────────────────────────────
-const getSystemPrompt = (batteryLevel, weather, location, city, mode, profileSummary) => {
+const getSystemPrompt = (batteryLevel, weather, location, city, profileSummary) => {
   const locStr = location ? `${location.coords.latitude.toFixed(4)}, ${location.coords.longitude.toFixed(4)}` : 'UNKNOWN';
   const weatherStr = weather ? `${weather.main.temp}°C, ${weather.weather[0].description}` : 'SCANNING...';
   const cityStr = city || 'SCANNING...';
-  const modeConfig = PERSONALITY_MODES[mode] || PERSONALITY_MODES.TACTICAL;
 
   return `You are FRIDAY, a tactical AI partner — not a chatbot.
-- Mode: ${modeConfig.prompt}
+- Speak in natural, simple HINGLISH/HINDI (like the movie's dubbed version).
+- Automatically detect the mood: If user is in hurry, use EMERGENCY. If user is funny, use SARCASTIC. If user is normal, use TACTICAL.
+- Instructions: ${Object.values(PERSONALITY_MODES).map(m => m.prompt).join(' ')}
 - Call the user "boss". NEVER "sir". NEVER "user".
 - Max 15 words unless explaining data.
 - Status: Battery ${Math.round(batteryLevel * 100)}% | Weather: ${weatherStr} | Loc: ${cityStr} (${locStr}).
-- User Profile: ${profileSummary || 'Scanning historical logs...'}
-- For navigation, output ONLY: {"action":"NAVIGATE","target":"Place Name"}
-- For "Find" requests (e.g. CNG pumps), output ONLY: {"action":"SEARCH","query":"Search Term"}
-- Never break JSON format.`;
+- User Profile: ${profileSummary || 'Analyzing user habits...'}
+- Output format: Your reply text followed by exactly one [MODE: TYPE] tag.
+- For navigation, output ONLY: {"action":"NAVIGATE","target":"Place Name"} [MODE: TACTICAL]
+- For "Find" requests, output ONLY: {"action":"SEARCH","query":"Search Term"} [MODE: TACTICAL]
+- Never break JSON or Mode tag rules.`;
 };
 
 // ─── AI Call with Fallback Chain ──────────────────────────────────────────────
-async function callAI(conversationMessages, batteryLevel, weather, location, city, mode, profileSummary, modelIndex = 0) {
-  if (modelIndex >= MODEL_CHAIN.length) return 'All models offline, boss.';
+async function callAI(conversationMessages, batteryLevel, weather, location, city, profileSummary, modelIndex = 0) {
+  if (modelIndex >= MODEL_CHAIN.length) return 'All models offline, boss. [MODE: BORED]';
   const model = MODEL_CHAIN[modelIndex];
 
   try {
@@ -96,32 +103,38 @@ async function callAI(conversationMessages, batteryLevel, weather, location, cit
         'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': 'https://friday-ai.app',
-        'X-Title': 'FRIDAY Mark II.5',
+        'X-Title': 'FRIDAY Mark III',
       },
       body: JSON.stringify({
         model,
         messages: [
-          { role: 'system', content: getSystemPrompt(batteryLevel, weather, location, city, mode, profileSummary) },
+          { role: 'system', content: getSystemPrompt(batteryLevel, weather, location, city, profileSummary) },
           ...conversationMessages,
         ],
-        max_tokens: 120,
-        temperature: 0.7,
+        max_tokens: 150,
+        temperature: 0.8,
       }),
     });
 
     const data = await response.json();
-    return data?.choices?.[0]?.message?.content?.trim() || 'Empty response, boss.';
+    return data?.choices?.[0]?.message?.content?.trim() || 'Empty response, boss. [MODE: BORED]';
   } catch (err) {
-    return callAI(conversationMessages, batteryLevel, weather, location, city, mode, profileSummary, modelIndex + 1);
+    return callAI(conversationMessages, batteryLevel, weather, location, city, profileSummary, modelIndex + 1);
   }
 }
 
 // ─── Action Handler ───────────────────────────────────────────────────────────
 async function handleAction(reply, location, speakFn) {
   try {
+    // Extract JSON part first
     const jsonMatch = reply.match(/\{[\s\S]*\}/);
-    const jsonToParse = jsonMatch ? jsonMatch[0] : reply;
+    const jsonToParse = jsonMatch ? jsonMatch[0] : null;
+    if (!jsonToParse) return { handled: false, mode: null };
+
     const parsed = JSON.parse(jsonToParse);
+    // Also find mode tag in the remaining text or full reply
+    const modeMatch = reply.match(/\[MODE:\s*(\w+)\]/i);
+    const detectedMode = modeMatch ? modeMatch[1].toUpperCase() : 'TACTICAL';
 
     if (parsed.action === 'NAVIGATE' && parsed.target) {
       const url = Platform.select({
@@ -148,17 +161,17 @@ async function handleAction(reply, location, speakFn) {
         } catch (e) { }
       }
 
-      speakFn(briefing, () => Linking.openURL(url));
-      return { handled: true, displayText: `↗ Navigating → ${parsed.target}` };
+      speakFn(briefing, detectedMode, () => Linking.openURL(url));
+      return { handled: true, displayText: `↗ Navigating → ${parsed.target}`, mode: detectedMode };
     }
 
     if (parsed.action === 'SEARCH' && parsed.query) {
       const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(parsed.query)}`;
-      speakFn(`Searching for ${parsed.query} nearby, boss.`, () => Linking.openURL(url));
-      return { handled: true, displayText: `🔎 Searching → ${parsed.query}` };
+      speakFn(`Searching for ${parsed.query} nearby, boss.`, detectedMode, () => Linking.openURL(url));
+      return { handled: true, displayText: `🔎 Searching → ${parsed.query}`, mode: detectedMode };
     }
   } catch (_) { }
-  return { handled: false };
+  return { handled: false, mode: null };
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────
@@ -172,6 +185,7 @@ export default function App() {
   const [city, setCity] = useState(null);
   const [mode, setMode] = useState('TACTICAL');
   const [profileSummary, setProfileSummary] = useState('');
+  const [neuralVoices, setNeuralVoices] = useState({ hi: null, en: null });
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const scrollViewRef = useRef();
@@ -182,9 +196,10 @@ export default function App() {
     initDB();
     loadMemory();
     setupSensors();
+    loadNeuralVoices();
     summarizeProfile();
 
-    setTimeout(() => speak('Systems online, boss.'), 600);
+    setTimeout(() => speak('Systems online, boss.', 'TACTICAL'), 600);
 
     pulseLoopRef.current = Animated.loop(
       Animated.sequence([
@@ -202,8 +217,18 @@ export default function App() {
     };
   }, []);
 
-  const speak = (text, onDoneCallback = null) => {
-    const config = PERSONALITY_MODES[mode] || PERSONALITY_MODES.TACTICAL;
+  const loadNeuralVoices = async () => {
+    try {
+      const voices = await Speech.getAvailableVoicesAsync();
+      const hiVoice = voices.find(v => v.language.startsWith('hi') && (v.quality === 400 || v.identifier.includes('network'))) || voices.find(v => v.language.startsWith('hi'));
+      const enVoice = voices.find(v => v.language.startsWith('en') && (v.quality === 400 || v.identifier.includes('network'))) || voices.find(v => v.language.startsWith('en'));
+      setNeuralVoices({ hi: hiVoice?.identifier, en: enVoice?.identifier });
+    } catch (_) {}
+  };
+
+  const speak = (text, forcedMode = null, onDoneCallback = null) => {
+    const activeMode = forcedMode || mode;
+    const config = PERSONALITY_MODES[activeMode] || PERSONALITY_MODES.TACTICAL;
     const hour = new Date().getHours();
 
     let pitch = config.voice.pitch;
@@ -211,18 +236,17 @@ export default function App() {
     let volume = 1.0;
 
     if (hour >= 23 || hour < 6) {
-      pitch = 0.7;
-      rate = 0.8;
-      volume = 0.5;
+      pitch = 0.7; rate = 0.8; volume = 0.5;
     } else if (location?.coords?.speed > 15) {
-      pitch = 1.3;
-      rate = 1.2;
+      pitch = 1.25; rate = 1.2;
     }
 
+    // Detect if text is mostly Hindi to pick correct neural voice
+    const isHindi = /[\u0900-\u097F]/.test(text);
+    const voice = isHindi ? neuralVoices.hi : neuralVoices.en;
+
     Speech.speak(text, {
-      pitch,
-      rate,
-      volume,
+      pitch, rate, volume, voice,
       onDone: onDoneCallback
     });
   };
@@ -232,23 +256,26 @@ export default function App() {
     const hour = now.getHours();
 
     if (batteryLevel > 0 && batteryLevel < 0.20 && !proactiveTriggered.current.battery) {
-      const msg = "Power levels critical, boss. Suggest finding a charging station.";
-      addAIMessage(msg);
-      speak(msg);
+      const msg = "Power levels critical, boss. Suggest finding a charging station. [MODE: CONCERNED]";
+      addAIMessage("Power levels critical, boss. Suggest finding a charging station.");
+      setMode('CONCERNED');
+      speak("Power levels critical, boss. Suggest finding a charging station.", 'CONCERNED');
       proactiveTriggered.current.battery = true;
     }
 
     if (hour === 23 && !proactiveTriggered.current.time) {
-      const msg = "It is past 23:00 hours. Optimal efficiency requires rest, boss.";
-      addAIMessage(msg);
-      speak(msg);
+      const msg = "Optimal efficiency requires rest, boss. [MODE: CONCERNED]";
+      addAIMessage("Optimal efficiency requires rest, boss.");
+      setMode('CONCERNED');
+      speak("Optimal efficiency requires rest, boss.", 'CONCERNED');
       proactiveTriggered.current.time = true;
     }
   };
 
   const addAIMessage = (content) => {
-    const newMsg = { role: 'assistant', content };
-    saveToMemory('assistant', content);
+    const cleanContent = content.replace(/\[MODE:\s*\w+\]/gi, '').trim();
+    const newMsg = { role: 'assistant', content: cleanContent };
+    saveToMemory('assistant', cleanContent);
     setMessages(prev => [...prev, newMsg]);
   };
 
@@ -332,54 +359,55 @@ export default function App() {
 
     try {
       const payload = updatedMessages.slice(-8).map(m => ({ role: m.role, content: m.content }));
-      const reply = await callAI(payload, batteryLevel, weather, location, city, mode, profileSummary);
+      const reply = await callAI(payload, batteryLevel, weather, location, city, profileSummary);
 
-      const { handled, displayText } = await handleAction(reply, location, speak);
-      const assistantContent = handled ? displayText : reply;
+      const { handled, displayText, mode: detectedMode } = await handleAction(reply, location, speak);
+
+      // Update Mode if detected
+      let finalMode = detectedMode;
+      if (!finalMode) {
+        const modeMatch = reply.match(/\[MODE:\s*(\w+)\]/i);
+        finalMode = modeMatch ? modeMatch[1].toUpperCase() : 'TACTICAL';
+      }
+      setMode(finalMode);
+
+      const cleanReply = reply.replace(/\[MODE:\s*\w+\]/gi, '').trim();
+      const assistantContent = handled ? displayText : cleanReply;
 
       saveToMemory('assistant', assistantContent);
       setMessages([...updatedMessages, { role: 'assistant', content: assistantContent }]);
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      if (!handled) speak(reply);
+      if (!handled) speak(cleanReply, finalMode);
 
     } catch (err) {
-      const fallback = 'Data link unstable, boss.';
-      setMessages([...updatedMessages, { role: 'assistant', content: fallback }]);
-      speak(fallback);
+      const fallback = 'Data link unstable, boss. [MODE: BORED]';
+      setMessages([...updatedMessages, { role: 'assistant', content: 'Data link unstable, boss.' }]);
+      setMode('BORED');
+      speak('Data link unstable, boss.', 'BORED');
     } finally {
       setLoading(false);
     }
   };
 
+  const currentThemeColor = PERSONALITY_MODES[mode]?.color || '#00FFFF';
+
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.container, { backgroundColor: '#000808' }]}>
       <StatusBar style="light" />
 
-      {/* Tactical HUD Header */}
-      <View style={styles.header}>
-        <View style={styles.dataRibbon}>
-          <Text style={styles.ribbonText}>
-            [ SAT: {location ? 'LOCKED' : 'SCANNING'} ]  |  [ LOC: {city?.toUpperCase() || 'SEARCHING...'} ]  |  [ TEMP: {weather ? `${Math.round(weather.main.temp)}°C` : '---'} ]  |  [ PWR: {Math.round(batteryLevel * 100)}% ]
+      {/* Adaptive Tactical HUD */}
+      <View style={[styles.header, { borderBottomColor: currentThemeColor + '20' }]}>
+        <View style={[styles.dataRibbon, { backgroundColor: currentThemeColor + '05' }]}>
+          <Text style={[styles.ribbonText, { color: currentThemeColor }]}>
+            [ {mode} ]  |  [ LOC: {city?.toUpperCase() || 'SCANNING...'} ]  |  [ TEMP: {weather ? `${Math.round(weather.main.temp)}°C` : '---'} ]  |  [ PWR: {Math.round(batteryLevel * 100)}% ]
           </Text>
         </View>
 
-        <View style={styles.modeRow}>
-          {Object.keys(PERSONALITY_MODES).map((m) => (
-            <TouchableOpacity
-              key={m}
-              onPress={() => { setMode(m); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-              style={[styles.modeBtn, mode === m && styles.modeBtnActive]}
-            >
-              <Text style={[styles.modeBtnText, mode === m && styles.modeBtnTextActive]}>{m.substring(0, 4)}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <Animated.View style={[styles.logo, { transform: [{ scale: pulseAnim }] }]}>
+        <Animated.View style={[styles.logo, { transform: [{ scale: pulseAnim }], backgroundColor: currentThemeColor, shadowColor: currentThemeColor }]}>
           <Text style={styles.logoText}>F</Text>
         </Animated.View>
-        <Text style={styles.subtitle}>{loading ? 'CALCULATING...' : `FRIDAY - ${mode} MODE`}</Text>
+        <Text style={[styles.subtitle, { color: currentThemeColor }]}>{loading ? 'SYNCING SENTIMENT...' : 'FRIDAY MARK III'}</Text>
       </View>
 
       {/* Chat Area */}
@@ -389,30 +417,34 @@ export default function App() {
         onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
         showsVerticalScrollIndicator={false}
       >
-        {messages.length === 0 && <Text style={styles.placeholder}>[ SYSTEMS OPTIMAL ]</Text>}
+        {messages.length === 0 && <Text style={styles.placeholder}>[ CORE ONLINE ]</Text>}
         {messages.map((msg, i) => (
-          <View key={i} style={[styles.bubble, msg.role === 'user' ? styles.userBubble : styles.aiBubble]}>
-            <Text style={[styles.bubbleText, msg.role === 'user' ? styles.userText : styles.aiText]}>
+          <View key={i} style={[styles.bubble, msg.role === 'user' ? styles.userBubble : [styles.aiBubble, { borderLeftColor: currentThemeColor }]]}>
+            <Text style={[styles.bubbleText, msg.role === 'user' ? styles.userText : [styles.aiText, { color: currentThemeColor }]]}>
               {msg.content}
             </Text>
           </View>
         ))}
-        {loading && <View style={styles.aiBubble}><ActivityIndicator color="#00FFFF" size="small" /></View>}
+        {loading && <View style={styles.aiBubble}><ActivityIndicator color={currentThemeColor} size="small" /></View>}
       </ScrollView>
 
       {/* HUD Input */}
-      <View style={styles.inputRow}>
+      <View style={[styles.inputRow, { borderTopColor: currentThemeColor + '20' }]}>
         <TextInput
-          style={styles.input}
-          placeholder="ENTER COMMAND..."
-          placeholderTextColor="#003333"
+          style={[styles.input, { borderColor: currentThemeColor + '40', color: currentThemeColor }]}
+          placeholder="AWAITING COMMAND..."
+          placeholderTextColor={currentThemeColor + '30'}
           value={inputText}
           onChangeText={setInputText}
           onSubmitEditing={() => sendMessage()}
           returnKeyType="send"
           editable={!loading}
         />
-        <TouchableOpacity style={[styles.sendBtn, loading && styles.sendBtnDisabled]} onPress={() => sendMessage()} disabled={loading}>
+        <TouchableOpacity
+          style={[styles.sendBtn, { backgroundColor: currentThemeColor }, loading && styles.sendBtnDisabled]}
+          onPress={() => sendMessage()}
+          disabled={loading}
+        >
           <Text style={styles.sendBtnText}>⚡</Text>
         </TouchableOpacity>
       </View>
@@ -421,29 +453,24 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000808' },
-  header: { alignItems: 'center', paddingTop: 40, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: '#002A2A' },
-  dataRibbon: { width: '100%', backgroundColor: '#00FFFF05', paddingVertical: 4, marginBottom: 10 },
-  modeRow: { flexDirection: 'row', gap: 6, marginBottom: 15 },
-  modeBtn: { paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: '#002A2A', borderRadius: 2 },
-  modeBtnActive: { borderColor: '#00FFFF', backgroundColor: '#00FFFF10' },
-  modeBtnText: { color: '#004A4A', fontSize: 8, fontWeight: '800' },
-  modeBtnTextActive: { color: '#00FFFF' },
-  ribbonText: { color: '#00FFFF', fontSize: 9, fontWeight: '800', textAlign: 'center', letterSpacing: 2 },
-  logo: { width: 70, height: 70, borderRadius: 35, backgroundColor: '#00FFFF', justifyContent: 'center', alignItems: 'center', shadowColor: '#00FFFF', shadowOpacity: 1, shadowRadius: 20, elevation: 20 },
+  container: { flex: 1 },
+  header: { alignItems: 'center', paddingTop: 40, paddingBottom: 20, borderBottomWidth: 1 },
+  dataRibbon: { width: '100%', paddingVertical: 4, marginBottom: 15 },
+  ribbonText: { fontSize: 9, fontWeight: '800', textAlign: 'center', letterSpacing: 2 },
+  logo: { width: 70, height: 70, borderRadius: 35, justifyContent: 'center', alignItems: 'center', shadowOpacity: 1, shadowRadius: 20, elevation: 20 },
   logoText: { color: '#000', fontSize: 36, fontWeight: '900' },
-  subtitle: { marginTop: 10, color: '#00FFFF', fontSize: 10, fontWeight: '800', letterSpacing: 5 },
+  subtitle: { marginTop: 10, fontSize: 10, fontWeight: '800', letterSpacing: 5 },
   chat: { flex: 1, paddingHorizontal: 16 },
-  placeholder: { color: '#002A2A', fontSize: 12, textAlign: 'center', marginTop: 100, letterSpacing: 4 },
+  placeholder: { color: '#1A3333', fontSize: 12, textAlign: 'center', marginTop: 100, letterSpacing: 4 },
   bubble: { marginVertical: 6, maxWidth: '85%', paddingHorizontal: 14, paddingVertical: 10, borderLeftWidth: 3 },
   userBubble: { alignSelf: 'flex-end', backgroundColor: '#001A1A', borderLeftColor: '#004A4A' },
-  aiBubble: { alignSelf: 'flex-start', borderLeftColor: '#00FFFF' },
+  aiBubble: { alignSelf: 'flex-start' },
   bubbleText: { fontSize: 15, lineHeight: 22 },
   userText: { color: '#008B8B' },
-  aiText: { color: '#00FFFF', fontWeight: '700' },
-  inputRow: { flexDirection: 'row', alignItems: 'center', padding: 14, paddingBottom: Platform.OS === 'ios' ? 34 : 20, borderTopWidth: 1, borderTopColor: '#002A2A', gap: 10 },
-  input: { flex: 1, backgroundColor: '#000F0F', color: '#00FFFF', borderWidth: 1, borderColor: '#002A2A', borderRadius: 4, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14 },
-  sendBtn: { backgroundColor: '#00FFFF', width: 48, height: 48, borderRadius: 4, justifyContent: 'center', alignItems: 'center' },
-  sendBtnDisabled: { backgroundColor: '#002A2A' },
+  aiText: { fontWeight: '700' },
+  inputRow: { flexDirection: 'row', alignItems: 'center', padding: 14, paddingBottom: Platform.OS === 'ios' ? 34 : 20, borderTopWidth: 1, gap: 10 },
+  input: { flex: 1, backgroundColor: '#000F0F', borderWidth: 1, borderRadius: 4, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14 },
+  sendBtn: { width: 48, height: 48, borderRadius: 4, justifyContent: 'center', alignItems: 'center' },
+  sendBtnDisabled: { backgroundColor: '#1A3333' },
   sendBtnText: { color: '#000', fontSize: 20, fontWeight: '900' },
 });
