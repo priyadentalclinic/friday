@@ -44,6 +44,7 @@
         "react-native-zeroconf",
         "expo-network",
         "react-native-tcp-socket",
+        "react-native-udp",
         "llama.rn",
         "./plugins/withLocalModel"
       ]

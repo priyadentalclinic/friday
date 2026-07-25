@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-apk:
-    name: Build Mark V.5 Sentinel Pro (Gemma Injection)
+    name: Build Mark V.5 Sentinel Pro (Llama 1B Injection)
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -33,10 +33,10 @@ jobs:
       - name: Create local_models directory
         run: mkdir -p local_models
 
-      - name: Inject Local Brain (Gemma 2b GGUF)
+      - name: Inject Local Brain (Llama 3.2 1B GGUF)
         run: |
           echo "[FRIDAY] Accessing high-speed satellite link for model injection..."
-          curl -L "https://huggingface.co/google/gemma-2b-it-GGUF/resolve/main/gemma-2b-it-q4_k_m.gguf" -o local_models/gemma-2b-it-q4_k_m.gguf
+          curl -L "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf" -o local_models/llama-3.2-1b-instruct-q4_k_m.gguf
 
       - name: Cache C++ Build
         uses: actions/cache@v4
@@ -65,7 +65,7 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 
-      - name: Build Sentinel Pro APK (1.6GB)
+      - name: Build Sentinel Pro APK (900MB)
         working-directory: android
         run: ./gradlew assembleDebug -PreactNativeArchitectures=arm64-v8a --no-daemon
         env:

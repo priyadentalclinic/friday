@@ -29,7 +29,7 @@ const OPENROUTER_API_KEY = process.env.EXPO_PUBLIC_OPENROUTER_API_KEY;
 const WEATHER_API_KEY = '2e0bd0427c23acdff51ecbb9ae21ab6a';
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const EDGE_TTS_URL = 'wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=6A5AA1D4EAFF4E9787D7E05195A4F334';
-const LOCAL_MODEL_NAME = 'gemma-2b-it-q4_k_m.gguf';
+const LOCAL_MODEL_NAME = 'llama-3.2-1b-instruct-q4_k_m.gguf';
 
 const MODEL_CHAIN = [
   'google/gemma-4-31b-it',

@@ -7,8 +7,8 @@ const withAndroidLocalModel = (config) => {
     'android',
     async (config) => {
       const projectRoot = config.modRequest.projectRoot;
-      const modelSource = path.join(projectRoot, 'local_models', 'gemma-2b-it-q4_k_m.gguf');
-      const assetsDest = path.join(projectRoot, 'android', 'app', 'src', 'main', 'assets', 'gemma-2b-it-q4_k_m.gguf');
+      const modelSource = path.join(projectRoot, 'local_models', 'llama-3.2-1b-instruct-q4_k_m.gguf');
+      const assetsDest = path.join(projectRoot, 'android', 'app', 'src', 'main', 'assets', 'llama-3.2-1b-instruct-q4_k_m.gguf');
 
       if (fs.existsSync(modelSource)) {
         console.log(`[FRIDAY] Injecting local model into Android assets...`);
