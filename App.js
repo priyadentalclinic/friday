@@ -314,7 +314,7 @@ export default function App() {
           <Text style={[styles.ribbonText, { color: theme }]}>[ {mode} ] | [ {city?.toUpperCase() || 'SCANNING'} ] | [ {weather ? `${Math.round(weather.main.temp)}°C` : '--'} ] | [ {Math.round(batteryLevel * 100)}% PWR ]</Text>
         </View>
         <Animated.View style={[styles.logo, { transform: [{ scale: pulseAnim }], backgroundColor: theme, shadowColor: theme }]}><Text style={styles.logoText}>F</Text></Animated.View>
-        <Text style={[styles.subtitle, { color: theme }]}>{loading ? 'SYNCING...' : 'FRIDAY GOLDEN MARK IV.1'}</Text>
+        <Text style={[styles.subtitle, { color: theme }]}>{loading ? 'SYNCING...' : 'FRIDAY MARK IV.2 - FINAL SYNC'}</Text>
       </View>
 
       <ScrollView style={styles.chat} ref={scrollViewRef} onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}>
