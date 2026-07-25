@@ -30,8 +30,10 @@
     "react-native-reanimated": "~4.1.1",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-volume-manager": "~2.0.8",
+    "react-native-lan-port-scanner": "^1.0.1",
     "react-native-worklets": "~0.5.1",
-    "react-native-zeroconf": "~0.13.7"
+    "react-native-zeroconf": "~0.13.7",
+    "expo-network": "~7.0.5"
   },
   "devDependencies": {
     "@babel/core": "^7.26.0"

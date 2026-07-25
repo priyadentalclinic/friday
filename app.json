@@ -22,7 +22,9 @@
         "NEARBY_WIFI_DEVICES",
         "ACCESS_WIFI_STATE",
         "CHANGE_WIFI_MULTICAST_STATE",
-        "ACCESS_NETWORK_STATE"
+        "ACCESS_NETWORK_STATE",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_MICROPHONE"
       ],
       "plugins": [
         [
@@ -37,7 +39,8 @@
         "expo-calendar",
         "expo-contacts",
         "react-native-volume-manager",
-        "react-native-zeroconf"
+        "react-native-zeroconf",
+        "expo-network"
       ]
     },
     "extra": {

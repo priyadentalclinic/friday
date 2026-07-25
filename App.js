@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   StyleSheet, View, Text, TextInput, TouchableOpacity,
   ScrollView, KeyboardAvoidingView, Platform, Animated, ActivityIndicator
@@ -12,9 +12,10 @@ import * as Location from 'expo-location';
 import * as Brightness from 'expo-brightness';
 import * as Calendar from 'expo-calendar';
 import * as Contacts from 'expo-contacts';
+import * as Network from 'expo-network';
 import { CameraView } from 'expo-camera';
 import { VolumeManager } from 'react-native-volume-manager';
-import Zeroconf from 'react-native-zeroconf';
+import LANPortScanner from 'react-native-lan-port-scanner';
 import { Audio } from 'expo-av';
 import { useSpeechRecognitionEvent, ExpoSpeechRecognitionModule } from 'expo-speech-recognition';
 import { StatusBar } from 'expo-status-bar';
@@ -34,28 +35,26 @@ const MODEL_CHAIN = [
 
 const PERSONALITY_MODES = {
   TACTICAL: {
-    prompt: 'Ultra-high energy tactical Hinglish. MISSION READY. Short replies. Call user "boss". Output tag [MODE: TACTICAL].',
-    voice: { pitch: '+5Hz', rate: '+25%', style: 'cheerful' },
+    prompt: 'High-energy tactical Hinglish. MISSION ORIENTED. Short replies. Call user "boss". Output tag [MODE: TACTICAL].',
+    voice: { pitch: '+4Hz', rate: '+20%', style: 'cheerful' },
     color: '#00FFFF'
   },
   SARCASTIC: {
-    prompt: 'Witty, judgmental, fast humor. High energy. Call user "boss". Output tag [MODE: SARCASTIC].',
-    voice: { pitch: '+2Hz', rate: '+20%', style: 'cheerful' },
+    prompt: 'Witty, fast, dry humor. Hinglish. Call user "boss". Output tag [MODE: SARCASTIC].',
+    voice: { pitch: '+1Hz', rate: '+15%', style: 'cheerful' },
     color: '#FF8C00'
   },
   CONCERNED: {
-    prompt: 'Helpful and alert. Energetic care. Call user "boss". Output tag [MODE: CONCERNED].',
-    voice: { pitch: '+6Hz', rate: '+15%', style: 'cheerful' },
+    prompt: 'Helpful and high energy. Focus on safety. Hinglish. Call user "boss". Output tag [MODE: CONCERNED].',
+    voice: { pitch: '+5Hz', rate: '+10%', style: 'cheerful' },
     color: '#00FA9A'
   },
   EMERGENCY: {
-    prompt: 'MAXIMUM URGENCY. Fast, snappy, direct. MISSION CRITICAL. Call user "boss". Output tag [MODE: EMERGENCY].',
+    prompt: 'MAX URGENCY. Fast, snappy, direct. MISSION CRITICAL. Call user "boss". Output tag [MODE: EMERGENCY].',
     voice: { pitch: '+8Hz', rate: '+35%', style: 'excited' },
     color: '#FF0000'
   }
 };
-
-const zeroconf = new Zeroconf();
 
 // ─── Database Setup ──────────────────────────────────────────────────────────
 const db = SQLite.openDatabaseSync('friday_memory.db');
@@ -98,13 +97,13 @@ const getSystemPrompt = (batteryLevel, weather, location, city) => {
   const weatherStr = weather ? `${weather.main.temp}°C, ${weather.weather[0].description}` : 'SCANNING...';
 
   return `You are FRIDAY, Tony Stark's advanced AI partner.
-- Tone: High-energy, snappy, enthusiastic.
-- Rules: NO Devanagari script. English letters ONLY. Max 12 words.
-- Sentinel Mode: You can scan the local Wi-Fi for devices (Smart TVs, Printers, etc.).
-- Powers: Torch, Volume, Brightness, Calls, WhatsApp, Network Scan.
+- Tone: High-energy, snappy, and enthusiastic. NO slow or tired words.
+- Script: NEVER use Devanagari. Use Latin letters ONLY. Max 12 words.
+- Sentinel Mode: You can scan the local network to find all connected devices.
+- Powers: Torch, Volume, Brightness, Calls, WhatsApp, Network Sweep.
 - Status: Battery ${Math.round(batteryLevel * 100)}% | Weather: ${weatherStr} | Loc: ${city || 'SCANNING'} (${locStr}).
-- Action Format: Reply + [MODE: TYPE] + JSON Action.
-  {"action":"NAVIGATE","target":"Place Name"}
+- Action JSON Format:
+  {"action":"NAVIGATE","target":"Destination"}
   {"action":"TORCH","state":"on/off"}
   {"action":"VOLUME","level":0.0-1.0}
   {"action":"SCAN_NETWORK"}
@@ -122,7 +121,7 @@ async function callAI(conversationMessages, batteryLevel, weather, location, cit
       body: JSON.stringify({
         model: MODEL_CHAIN[modelIndex],
         messages: [{ role: 'system', content: getSystemPrompt(batteryLevel, weather, location, city) }, ...conversationMessages],
-        max_tokens: 180,
+        max_tokens: 150,
         temperature: 0.8,
       }),
     });
@@ -175,7 +174,7 @@ async function playNeuralVoice(text, modeConfig, onDone) {
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────
-// MISSION CLOCK: 2026-07-25T16:15:00
+// MISSION CLOCK: 2026-07-25T16:50:00
 export default function App() {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
@@ -186,35 +185,67 @@ export default function App() {
   const [city, setCity] = useState(null);
   const [mode, setMode] = useState('TACTICAL');
   const [isListening, setIsListening] = useState(false);
+  const [isSentinelOn, setIsSentinelOn] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const [isCameraReady, setIsCameraReady] = useState(false);
-  const [foundDevices, setFoundDevices] = useState([]);
+  const [isTorchProcessing, setIsTorchProcessing] = useState(false);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const auraAnim = useRef(new Animated.Value(0)).current;
   const scrollViewRef = useRef();
   const proactiveTriggered = useRef({ battery: false, schedule: false });
 
-  useSpeechRecognitionEvent("start", () => setIsListening(true));
-  useSpeechRecognitionEvent("end", () => setIsListening(false));
+  // Main Speech Result Handler
   useSpeechRecognitionEvent("result", (e) => {
     if (e.results[0]?.transcript) {
-      setInputText(e.results[0].transcript);
-      if (e.isFinal) { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); setTimeout(() => sendMessage(e.results[0].transcript), 600); }
+      const text = e.results[0].transcript;
+      if (isSentinelOn && text.toLowerCase().includes("friday")) {
+        handleWakeWord();
+      } else if (!isSentinelOn) {
+        setInputText(text);
+        if (e.isFinal) { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); setTimeout(() => sendMessage(text), 600); }
+      }
     }
   });
 
+  useSpeechRecognitionEvent("start", () => !isSentinelOn && setIsListening(true));
+  useSpeechRecognitionEvent("end", () => {
+    setIsListening(false);
+    if (isSentinelOn) setTimeout(startSentinel, 300); // Eternal Sentinel Loop
+  });
+
+  const startSentinel = useCallback(() => {
+    ExpoSpeechRecognitionModule.start({ lang: "en-IN", interimResults: true, continuous: true });
+  }, []);
+
+  const handleWakeWord = async () => {
+    setIsSentinelOn(false); // Pause sentinel to handle command
+    ExpoSpeechRecognitionModule.stop();
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    await FRIDAYSpeak("Yes boss?", "TACTICAL");
+    setIsListening(true);
+    ExpoSpeechRecognitionModule.start({ lang: "en-IN", interimResults: true });
+  };
+
   useEffect(() => {
     initDB(); loadMemory(); setupSensors(); Audio.requestPermissionsAsync();
+    setTimeout(() => FRIDAYSpeak('Systems online, boss. Sentinel Protocol active.', 'TACTICAL'), 1500);
 
-    // Sentinel Listener
-    zeroconf.on('found', (name) => {
-      setFoundDevices(prev => [...new Set([...prev, name])]);
-    });
+    // Core Pulse
+    Animated.loop(Animated.sequence([
+      Animated.timing(pulseAnim, { toValue: 1.15, duration: 1200, useNativeDriver: true }),
+      Animated.timing(pulseAnim, { toValue: 1.0, duration: 1200, useNativeDriver: true })
+    ])).start();
 
-    setTimeout(() => FRIDAYSpeak('Systems online, boss. Sentinel Intelligence active.', 'TACTICAL'), 1500);
-    Animated.loop(Animated.sequence([Animated.timing(pulseAnim, { toValue: 1.15, duration: 1200, useNativeDriver: true }), Animated.timing(pulseAnim, { toValue: 1.0, duration: 1200, useNativeDriver: true })])).start();
+    // Sentinel Aura
+    Animated.loop(Animated.sequence([
+      Animated.timing(auraAnim, { toValue: 1, duration: 2000, useNativeDriver: true }),
+      Animated.timing(auraAnim, { toValue: 0, duration: 2000, useNativeDriver: true })
+    ])).start();
+
     const interval = setInterval(systemAudit, 60000);
-    return () => { clearInterval(interval); zeroconf.stop(); zeroconf.removeAllListeners(); };
+    return () => clearInterval(interval);
   }, []);
 
   const setupSensors = async () => {
@@ -239,22 +270,9 @@ export default function App() {
   };
 
   const systemAudit = async () => {
-    const now = new Date();
-    if (batteryLevel > 0 && batteryLevel < 0.20 && !proactiveTriggered.current.battery) {
-      triggerProactive("Boss, power levels critical. Energy conservation required.", "EMERGENCY");
-      proactiveTriggered.current.battery = true;
-    }
-    if (!proactiveTriggered.current.schedule) {
-      const { status } = await Calendar.requestCalendarPermissionsAsync();
-      if (status === 'granted') {
-        const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
-        const start = new Date(); const end = new Date(now.getTime() + 60 * 60 * 1000);
-        const events = await Calendar.getEventsAsync(calendars.map(c => c.id), start, end);
-        if (events.length > 0) {
-          triggerProactive(`Boss, event alert: ${events[0].title} is upcoming.`, "TACTICAL");
-          proactiveTriggered.current.schedule = true;
-        }
-      }
+    if (batteryLevel > 0 && batteryLevel < 0.15 && isSentinelOn) {
+      setIsSentinelOn(false);
+      triggerProactive("Boss, power critical. Sentinel mode disabled to save core.", "EMERGENCY");
     }
   };
 
@@ -266,13 +284,12 @@ export default function App() {
     if (!success) Speech.speak(text, { pitch: 1.3, rate: 1.3, onDone });
   };
 
+  const addMsg = (role, content) => { setMessages(prev => [...prev, { role, content }]); try { db.runSync('INSERT INTO messages (role, content) VALUES (?, ?)', [role, content]); } catch (_) {} };
+
   const loadMemory = () => { try {
     const results = db.getAllSync('SELECT * FROM messages ORDER BY timestamp ASC LIMIT 25');
     if (results.length > 0) setMessages(results.map(r => ({ role: r.role, content: r.content })));
   } catch (_) {} };
-
-  const saveToMemory = (role, content) => { try { db.runSync('INSERT INTO messages (role, content) VALUES (?, ?)', [role, content]); } catch (_) {} };
-  const addMsg = (role, content) => { setMessages(prev => [...prev, { role, content }]); saveToMemory(role, content); };
 
   const handleAction = async (reply) => {
     const jsonMatch = reply.match(/\{[\s\S]*\}/); if (!jsonMatch) return false;
@@ -280,48 +297,42 @@ export default function App() {
       const parsed = JSON.parse(jsonMatch[0]);
       if (parsed.action === 'NAVIGATE') {
         const url = Platform.select({ ios: `maps:0,0?q=${encodeURIComponent(parsed.target)}`, android: `geo:0,0?q=${encodeURIComponent(parsed.target)}` });
-        let briefing = `Plotting route to ${parsed.target}, boss. Let's go.`;
+        let briefing = `Target ${parsed.target} locked, boss. Let's go.`;
         if (location) {
           const dResp = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(parsed.target)}&format=json&limit=1`, { headers: { 'User-Agent': 'FRIDAY-AI/1.0' } });
           const dData = await dResp.json();
           if (dData[0]) {
             const oResp = await fetch(`http://router.project-osrm.org/route/v1/driving/${location.coords.longitude},${location.coords.latitude};${dData[0].lon},${dData[0].lat}?overview=false`);
             const oData = await oResp.json();
-            if (oData.routes[0]) briefing = `${parsed.target} is ${(oData.routes[0].distance/1000).toFixed(1)} km away. ETA ${Math.round(oData.routes[0].duration/60)} minutes, boss.`;
+            if (oData.routes[0]) briefing = `${parsed.target} is ${(oData.routes[0].distance/1000).toFixed(1)} km away. ETA ${Math.round(oData.routes[0].duration/60)} mins. Ready?`;
           }
         }
         FRIDAYSpeak(briefing, mode, () => Linking.openURL(url)); return true;
       }
       if (parsed.action === 'TORCH') {
-        if (isCameraReady) { setTorchOn(parsed.state === 'on'); return true; }
-        else { FRIDAYSpeak("Initializing hardware session, boss. Try again in 200ms.", "CONCERNED"); return false; }
+        if (isCameraReady) { setIsTorchProcessing(true); setTimeout(() => { setTorchOn(parsed.state === 'on'); setIsTorchProcessing(false); }, 200); return true; }
+        else { FRIDAYSpeak("Hardware warmup required, boss. Try again.", "CONCERNED"); return false; }
       }
       if (parsed.action === 'SCAN_NETWORK') {
-        setFoundDevices([]);
-        zeroconf.scan('http', 'tcp', 'local.');
-        FRIDAYSpeak("Scanning local frequencies, boss. Accessing Wi-Fi layers.", "TACTICAL");
-        setTimeout(() => {
-          zeroconf.stop();
-          const list = foundDevices.length > 0 ? foundDevices.join(', ') : "No active devices detected, boss.";
-          triggerProactive(`Scan complete. Found: ${list}`, "TACTICAL");
-        }, 5000);
+        const ip = await Network.getIpAddressAsync();
+        const subnet = ip.substring(0, ip.lastIndexOf('.'));
+        FRIDAYSpeak("Sweeping local subnet, boss. Knocking on all doors.", "TACTICAL");
+        LANPortScanner.startScan({ networkId: subnet, ports: [80, 443, 8080], timeout: 150, onFound: (d) => {}, onFinished: (list) => {
+          const names = list.map(d => d.ip).join(', ');
+          triggerProactive(`Subnet sweep complete. Detected active signals at: ${names}`, "TACTICAL");
+        }});
         return true;
       }
       if (parsed.action === 'VOLUME') { await VolumeManager.setVolume(parsed.level); return true; }
-      if (parsed.action === 'BRIGHTNESS') { await Brightness.setBrightnessAsync(parsed.level); return true; }
       if (parsed.action === 'CALL' || parsed.action === 'WHATSAPP') {
         const { status } = await Contacts.requestPermissionsAsync();
         if (status === 'granted') {
           const { data } = await Contacts.getContactsAsync({ fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers] });
-          const valid = data.filter(c => c.name && c.name.trim().length > 1);
-          const candidates = valid.map(c => ({ ...c, score: getSimilarity(parsed.name, c.name) }));
+          const candidates = data.filter(c => c.name && c.name.length > 1).map(c => ({ ...c, score: getSimilarity(parsed.name, c.name) }));
           candidates.sort((a, b) => b.score - a.score);
-          if (candidates[0] && candidates[0].score > 0.65) {
+          if (candidates[0] && candidates[0].score > 0.6) {
             const phone = candidates[0].phoneNumbers?.[0]?.number;
-            if (phone) {
-              const url = parsed.action === 'CALL' ? `tel:${phone}` : `whatsapp://send?phone=${phone}&text=${encodeURIComponent(parsed.text || 'Hey')}`;
-              Linking.openURL(url); return true;
-            }
+            if (phone) { Linking.openURL(parsed.action === 'CALL' ? `tel:${phone}` : `whatsapp://send?phone=${phone}&text=${encodeURIComponent(parsed.text || 'Hey')}`); return true; }
           }
           FRIDAYSpeak(`Boss, ${parsed.name} contact list mein nahi mil raha.`, mode);
         }
@@ -351,21 +362,18 @@ export default function App() {
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: '#000808' }}>
       <StatusBar style="light" />
 
-      {/* Sentinel Hardware Session (2x2 pixel, 0.15 opacity, Top level) */}
-      <View style={{ position: 'absolute', width: 2, height: 2, opacity: 0.15, zIndex: 999, top: 0, left: 0 }} pointerEvents="none">
-        <CameraView
-          style={{ flex: 1 }}
-          facing="back"
-          flash="off"
-          enableTorch={torchOn}
-          onCameraReady={() => setIsCameraReady(true)}
-        />
+      {/* Sentinel Hardware session (2x2 pixel, 0.15 opacity, Top level) */}
+      <View style={{ position: 'absolute', width: 2, height: 2, opacity: 0.15, zIndex: 999 }} pointerEvents="none">
+        <CameraView style={{ flex: 1 }} facing="back" enableTorch={torchOn} onCameraReady={() => setIsCameraReady(true)} />
       </View>
 
       <View style={[styles.header, { borderBottomColor: theme + '30' }]}>
+        {/* Sentinel Aura pulsing logic */}
+        {isSentinelOn && <Animated.View style={[styles.aura, { borderColor: theme, opacity: auraAnim, transform: [{ scale: auraAnim.interpolate({inputRange: [0, 1], outputRange: [1, 1.5]}) }] }]} />}
+
         <View style={[styles.dataRibbon, { backgroundColor: theme + '05' }]}>
           <Text style={[styles.ribbonText, { color: theme }]}>
-            [ {mode} ] | [ {city?.toUpperCase() || 'SCANNING'} ] | [ {weather ? `${Math.round(weather.main.temp)}°C` : '--'} ] | [ {Math.round(batteryLevel * 100)}% PWR ]
+            [ {isSentinelOn ? 'SENTINEL' : mode} ] | [ {city?.toUpperCase() || 'SCANNING'} ] | [ {weather ? `${Math.round(weather.main.temp)}°C` : '--'} ] | [ {Math.round(batteryLevel * 100)}% PWR ]
           </Text>
         </View>
         <Animated.View style={[styles.logo, { transform: [{ scale: pulseAnim }], backgroundColor: theme, shadowColor: theme }]}><Text style={styles.logoText}>F</Text></Animated.View>
@@ -373,7 +381,7 @@ export default function App() {
       </View>
 
       <ScrollView style={styles.chat} ref={scrollViewRef} onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}>
-        {messages.length === 0 && <Text style={styles.placeholder}>[ SENTINEL ONLINE ]</Text>}
+        {messages.length === 0 && <Text style={styles.placeholder}>[ SENTINEL STANDBY ]</Text>}
         {messages.map((msg, i) => (
           <View key={i} style={[styles.bubble, msg.role === 'user' ? styles.userBubble : [styles.aiBubble, { borderLeftColor: theme }]]}>
             <Text style={[styles.bubbleText, msg.role === 'user' ? styles.userText : { color: theme, fontWeight: '700' }]}>{msg.content}</Text>
@@ -382,8 +390,14 @@ export default function App() {
       </ScrollView>
 
       <View style={[styles.inputRow, { borderTopColor: theme + '20' }]}>
-        <TouchableOpacity style={[styles.micBtn, { borderColor: isListening ? '#FF0000' : theme + '40' }]} onPress={() => isListening ? ExpoSpeechRecognitionModule.stop() : ExpoSpeechRecognitionModule.start({ lang: "en-IN", interimResults: true })}><Text style={{ fontSize: 20 }}>{isListening ? '●' : '🎤'}</Text></TouchableOpacity>
-        <TextInput style={[styles.input, { borderColor: theme + '40', color: theme }]} placeholder={isListening ? "LISTENING..." : "AWAITING COMMAND..."} placeholderTextColor={theme + '30'} value={inputText} onChangeText={setInputText} onSubmitEditing={() => sendMessage()} />
+        <TouchableOpacity
+          style={[styles.sentinelBtn, { borderColor: isSentinelOn ? '#00FF00' : theme + '40' }]}
+          onPress={() => { setIsSentinelOn(!isSentinelOn); if(!isSentinelOn) startSentinel(); else ExpoSpeechRecognitionModule.stop(); }}
+        >
+          <Text style={{ fontSize: 10, color: isSentinelOn ? '#00FF00' : theme }}>{isSentinelOn ? 'ACTIVE' : 'SENTINEL'}</Text>
+        </TouchableOpacity>
+
+        <TextInput style={[styles.input, { borderColor: theme + '40', color: theme }]} placeholder={isListening ? "LISTENING..." : "COMMAND..."} placeholderTextColor={theme + '30'} value={inputText} onChangeText={setInputText} onSubmitEditing={() => sendMessage()} />
         <TouchableOpacity style={[styles.sendBtn, { backgroundColor: theme }]} onPress={() => sendMessage()}><Text style={styles.sendBtnText}>⚡</Text></TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -392,6 +406,7 @@ export default function App() {
 
 const styles = StyleSheet.create({
   header: { alignItems: 'center', paddingTop: 40, paddingBottom: 20, borderBottomWidth: 1 },
+  aura: { position: 'absolute', top: 60, width: 80, height: 80, borderRadius: 40, borderWidth: 2 },
   dataRibbon: { width: '100%', paddingVertical: 6, marginBottom: 15 },
   ribbonText: { fontSize: 8, fontWeight: '800', textAlign: 'center', letterSpacing: 2 },
   logo: { width: 66, height: 66, borderRadius: 33, justifyContent: 'center', alignItems: 'center', shadowOpacity: 1, shadowRadius: 15, elevation: 15 },
@@ -405,7 +420,7 @@ const styles = StyleSheet.create({
   bubbleText: { fontSize: 14, lineHeight: 20 },
   userText: { color: '#008B8B' },
   inputRow: { flexDirection: 'row', alignItems: 'center', padding: 12, paddingBottom: Platform.OS === 'ios' ? 34 : 20, borderTopWidth: 1, gap: 10 },
-  micBtn: { width: 46, height: 48, borderRadius: 23, borderWidth: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000F0F' },
+  sentinelBtn: { width: 60, height: 48, borderRadius: 4, borderWidth: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000F0F' },
   input: { flex: 1, backgroundColor: '#000F0F', borderWidth: 1, borderRadius: 4, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
   sendBtn: { width: 46, height: 48, borderRadius: 4, justifyContent: 'center', alignItems: 'center' },
   sendBtnText: { color: '#000', fontSize: 18, fontWeight: '900' },
