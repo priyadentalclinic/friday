@@ -171,6 +171,7 @@ async function playNeuralVoice(text, modeConfig, onDone) {
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────
+// MISSION CLOCK: 2026-07-25T11:45:00
 export default function App() {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');

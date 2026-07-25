@@ -12,6 +12,15 @@
         "RECORD_AUDIO",
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION"
+      ],
+      "plugins": [
+        [
+          "expo-speech-recognition",
+          {
+            "microphonePermission": "Allow FRIDAY to access the microphone for speech recognition.",
+            "speechRecognitionPermission": "Allow FRIDAY to use speech recognition."
+          }
+        ]
       ]
     },
     "extra": {
