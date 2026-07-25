@@ -28,23 +28,23 @@ const MODEL_CHAIN = [
 
 const PERSONALITY_MODES = {
   TACTICAL: {
-    prompt: 'Mission-oriented Hinglish. Short replies. Sound like movie FRIDAY. Call user "boss". Output tag [MODE: TACTICAL].',
-    voice: { pitch: '+0Hz', rate: '+10%' },
+    prompt: 'Mission-oriented Hinglish. High energy. Short replies. Call user "boss". Use Latin script only. Output tag [MODE: TACTICAL].',
+    voice: { pitch: '+2Hz', rate: '+15%', style: 'cheerful' },
     color: '#00FFFF'
   },
   SARCASTIC: {
-    prompt: 'Witty, judgmental dry humor. Natural Hinglish. Call user "boss". Output tag [MODE: SARCASTIC].',
-    voice: { pitch: '-3Hz', rate: '+0%' },
+    prompt: 'Witty, judgmental dry humor. High energy. Hinglish. Call user "boss". Use Latin script only. Output tag [MODE: SARCASTIC].',
+    voice: { pitch: '-1Hz', rate: '+10%', style: 'cheerful' },
     color: '#FF8C00'
   },
   CONCERNED: {
-    prompt: 'Focus on safety/health. Caring tone in simple Hinglish. Call user "boss". Output tag [MODE: CONCERNED].',
-    voice: { pitch: '+2Hz', rate: '-5%' },
+    prompt: 'Helpful, focus on safety/health. Caring but energetic. Hinglish. Call user "boss". Use Latin script only. Output tag [MODE: CONCERNED].',
+    voice: { pitch: '+3Hz', rate: '+5%', style: 'cheerful' },
     color: '#00FA9A'
   },
   EMERGENCY: {
-    prompt: 'High urgency, fast, direct. Mission critical. Call user "boss". Output tag [MODE: EMERGENCY].',
-    voice: { pitch: '+6Hz', rate: '+25%' },
+    prompt: 'High urgency, fast, direct. Mission critical. Hinglish. Call user "boss". Use Latin script only. Output tag [MODE: EMERGENCY].',
+    voice: { pitch: '+6Hz', rate: '+30%', style: 'cheerful' },
     color: '#FF0000'
   }
 };
@@ -57,17 +57,18 @@ const initDB = () => {
   } catch (err) { console.log("[FRIDAY] DB Error:", err.message); }
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Base64 Helper (Safe for Android) ─────────────────────────────────────────
 const toBase64 = (uint8Array) => {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
   let binary = '';
   const len = uint8Array.byteLength;
   for (let i = 0; i < len; i++) {
     binary += String.fromCharCode(uint8Array[i]);
   }
   let output = '';
-  for (let block = 0, charCode, i = 0, map = chars; binary.charAt(i | 0) || (map = '=', i % 1); output += map.charAt(63 & block >> 8 - i % 1 * 8)) {
+  for (let i = 0, block, charCode, map = chars; binary.charAt(i | 0) || (map = '=', i % 1); output += map.charAt(63 & block >> 8 - i % 1 * 8)) {
     charCode = binary.charCodeAt(i += 3 / 4);
+    if (charCode > 0xFF) throw new Error("'btoa' failed");
     block = block << 8 | charCode;
   }
   return output;
@@ -79,15 +80,13 @@ const getSystemPrompt = (batteryLevel, weather, location, city, profileSummary) 
   const weatherStr = weather ? `${weather.main.temp}°C, ${weather.weather[0].description}` : 'SCANNING...';
 
   return `You are FRIDAY, Tony Stark's advanced AI partner.
-- Speak in natural, simple HINGLISH (Hindi + English mix). No difficult Hindi words.
-- Be proactive. Automatically detect user sentiment.
+- Speak in natural, high-energy HINGLISH. No slow or tired words.
+- NEVER use Devanagari script (Hindi characters). Use ONLY English letters.
+- Persona: Cool, smart, and enthusiastic about the mission.
 - Instructions: ${Object.values(PERSONALITY_MODES).map(m => m.prompt).join(' ')}
 - Status: Battery ${Math.round(batteryLevel * 100)}% | Weather: ${weatherStr} | Loc: ${city || 'SCANNING'} (${locStr}).
-- User Interests: ${profileSummary || 'Analyzing historical logs...'}
 - Output format: Your reply text followed by exactly one [MODE: TYPE] tag.
-- For navigation, output ONLY: {"action":"NAVIGATE","target":"Place Name"} [MODE: TACTICAL]
-- For "Find" requests, output ONLY: {"action":"SEARCH","query":"Search Term"} [MODE: TACTICAL]
-- Never break the JSON or tag rule. Keep replies under 15 words.`;
+- Never break the tag rule. Keep replies under 20 words.`;
 };
 
 // ─── AI Call ──────────────────────────────────────────────────────────────────
@@ -96,7 +95,7 @@ async function callAI(conversationMessages, batteryLevel, weather, location, cit
   try {
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${OPENROUTER_API_KEY}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://friday-ai.app', 'X-Title': 'FRIDAY Mark IV' },
+      headers: { 'Authorization': `Bearer ${OPENROUTER_API_KEY}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://friday-ai.app', 'X-Title': 'FRIDAY Mark IV.1' },
       body: JSON.stringify({
         model: MODEL_CHAIN[modelIndex],
         messages: [{ role: 'system', content: getSystemPrompt(batteryLevel, weather, location, city, profileSummary) }, ...conversationMessages],
@@ -111,7 +110,7 @@ async function callAI(conversationMessages, batteryLevel, weather, location, cit
   }
 }
 
-// ─── Neural Voice Implementation (Edge TTS) ────────────────────────────────────
+// ─── Neural Voice (Edge TTS - High Energy) ────────────────────────────────────
 async function playNeuralVoice(text, modeConfig, onDone) {
   return new Promise((resolve) => {
     const ws = new WebSocket(EDGE_TTS_URL, null, {
@@ -124,7 +123,7 @@ async function playNeuralVoice(text, modeConfig, onDone) {
     let audioChunks = [];
     ws.onopen = () => {
       const configMsg = `X-Timestamp:${Date.now()}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false","wordBoundaryEnabled":"false"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}`;
-      const ssmlMsg = `X-Timestamp:${Date.now()}\r\nContent-Type:application/ssml+xml\r\nPath:ssml\r\n\r\n<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='hi-IN'><voice name='hi-IN-SwaraNeural'><prosody pitch='${modeConfig.voice.pitch}' rate='${modeConfig.voice.rate}' volume='+0%'>${text}</prosody></voice></speak>`;
+      const ssmlMsg = `X-Timestamp:${Date.now()}\r\nContent-Type:application/ssml+xml\r\nPath:ssml\r\n\r\n<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xmlns:mstts='http://www.w3.org/2001/mstts' xml:lang='hi-IN'><voice name='hi-IN-SwaraNeural'><mstts:express-as style='${modeConfig.voice.style}'><prosody pitch='${modeConfig.voice.pitch}' rate='${modeConfig.voice.rate}' volume='+20%'>${text}</prosody></mstts:express-as></voice></speak>`;
       ws.send(configMsg);
       ws.send(ssmlMsg);
     };
@@ -171,7 +170,7 @@ async function playNeuralVoice(text, modeConfig, onDone) {
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────
-// MISSION CLOCK: 2026-07-25T11:45:00
+// MISSION CLOCK: 2026-07-25T11:55:00
 export default function App() {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
@@ -194,7 +193,10 @@ export default function App() {
     if (event.results[0]?.transcript) {
       const text = event.results[0].transcript;
       setInputText(text);
-      if (event.isFinal) setTimeout(() => sendMessage(text), 600);
+      if (event.isFinal) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setTimeout(() => sendMessage(text), 600);
+      }
     }
   });
 
@@ -204,12 +206,12 @@ export default function App() {
     setupSensors();
     Audio.requestPermissionsAsync();
 
-    setTimeout(() => FRIDAYSpeak('Systems online, boss.', 'TACTICAL'), 800);
+    setTimeout(() => FRIDAYSpeak('Systems online, boss. Ready for orders.', 'TACTICAL'), 1000);
 
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.15, duration: 1400, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1.0, duration: 1400, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1.15, duration: 1200, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1.0, duration: 1200, useNativeDriver: true }),
       ])
     ).start();
 
@@ -243,11 +245,11 @@ export default function App() {
   const checkStatus = () => {
     const hour = new Date().getHours();
     if (batteryLevel > 0 && batteryLevel < 0.15 && !proactiveTriggered.current.battery) {
-      triggerProactive("Boss, power critical hai. Charging station dhundo.", "EMERGENCY");
+      triggerProactive("Boss, power critical hai. Charge karo.", "EMERGENCY");
       proactiveTriggered.current.battery = true;
     }
     if (hour === 23 && !proactiveTriggered.current.time) {
-      triggerProactive("Boss, 11 baj gaye hain. Efficiency ke liye neend zaroori hai.", "CONCERNED");
+      triggerProactive("Boss, systems resting mode mein jaa rahe hain. Soyiye.", "CONCERNED");
       proactiveTriggered.current.time = true;
     }
   };
@@ -260,7 +262,7 @@ export default function App() {
     const mConfig = PERSONALITY_MODES[forcedMode || mode] || PERSONALITY_MODES.TACTICAL;
     const success = await playNeuralVoice(text, mConfig, onDone);
     if (!success) {
-      Speech.speak(text, { pitch: 1.0, rate: 1.0, onDone });
+      Speech.speak(text, { pitch: 1.1, rate: 1.1, onDone });
     }
   };
 
@@ -268,8 +270,6 @@ export default function App() {
     try {
       const results = db.getAllSync('SELECT * FROM messages ORDER BY timestamp ASC LIMIT 20');
       if (results.length > 0) setMessages(results.map(r => ({ role: r.role, content: r.content })));
-      const users = db.getAllSync('SELECT content FROM messages WHERE role="user"');
-      if (users.length > 5) setProfileSummary(`Frequent topics: ${users.slice(-5).map(u => u.content).join(', ')}`);
     } catch (_) {}
   };
 
@@ -301,7 +301,7 @@ export default function App() {
               if (osrmData.routes[0]) {
                 const dist = (osrmData.routes[0].distance / 1000).toFixed(1);
                 const dur = Math.round(osrmData.routes[0].duration / 60);
-                briefing = `${parsed.target} is ${dist} km away. ETA ${dur} minutes, boss. Initiating.`;
+                briefing = `${parsed.target} is ${dist} km away. ETA ${dur} minutes, boss. Let's go.`;
               }
             }
           } catch (e) { }
@@ -325,7 +325,7 @@ export default function App() {
     addMsg('user', msg); setInputText(''); setLoading(true);
 
     try {
-      const payload = messages.slice(-6).map(m => ({ role: m.role, content: m.content }));
+      const payload = messages.slice(-8).map(m => ({ role: m.role, content: m.content }));
       payload.push({ role: 'user', content: msg });
       const reply = await callAI(payload, batteryLevel, weather, location, city, profileSummary);
 
@@ -340,30 +340,33 @@ export default function App() {
         addMsg('assistant', cleanReply);
         FRIDAYSpeak(cleanReply, newMode);
       } else {
-        addMsg('assistant', `↗ MISSION ACTIVE: ${newMode}`);
+        addMsg('assistant', `↗ MISSION: ${newMode}`);
       }
     } catch (_) {
-      addMsg('assistant', 'Data link failure, boss.');
+      addMsg('assistant', 'Connection unstable, boss.');
     } finally { setLoading(false); }
   };
 
   const currentTheme = PERSONALITY_MODES[mode]?.color || '#00FFFF';
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.container, { backgroundColor: '#000808' }]}>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: '#000808' }}>
       <StatusBar style="light" />
+
+      {/* HUD Header */}
       <View style={[styles.header, { borderBottomColor: currentTheme + '30' }]}>
         <View style={[styles.dataRibbon, { backgroundColor: currentTheme + '05' }]}>
           <Text style={[styles.ribbonText, { color: currentTheme }]}>
-            [ {mode} ]  |  [ {city?.toUpperCase() || 'SCANNING...'} ]  |  [ {weather ? `${Math.round(weather.main.temp)}°C` : '--'} ]  |  [ {Math.round(batteryLevel * 100)}% PWR ]
+            [ {mode} ]  |  [ {city?.toUpperCase() || 'SEARCHING'} ]  |  [ {weather ? `${Math.round(weather.main.temp)}°C` : '--'} ]  |  [ {Math.round(batteryLevel * 100)}% PWR ]
           </Text>
         </View>
         <Animated.View style={[styles.logo, { transform: [{ scale: pulseAnim }], backgroundColor: currentTheme, shadowColor: currentTheme }]}>
           <Text style={styles.logoText}>F</Text>
         </Animated.View>
-        <Text style={[styles.subtitle, { color: currentTheme }]}>{loading ? 'SYNCING...' : 'FRIDAY MARK IV'}</Text>
+        <Text style={[styles.subtitle, { color: currentTheme }]}>{loading ? 'SYNCING...' : 'FRIDAY MARK IV.1'}</Text>
       </View>
 
+      {/* Main HUD Chat */}
       <ScrollView style={styles.chat} ref={scrollViewRef} onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}>
         {messages.length === 0 && <Text style={styles.placeholder}>[ CORE ONLINE ]</Text>}
         {messages.map((msg, i) => (
@@ -373,10 +376,11 @@ export default function App() {
         ))}
       </ScrollView>
 
+      {/* Input Module */}
       <View style={[styles.inputRow, { borderTopColor: currentTheme + '20' }]}>
         <TouchableOpacity
           style={[styles.micBtn, { borderColor: isListening ? '#FF0000' : currentTheme + '40' }]}
-          onPress={() => isListening ? ExpoSpeechRecognitionModule.stop() : ExpoSpeechRecognitionModule.start({ lang: "hi-IN", interimResults: true })}
+          onPress={() => isListening ? ExpoSpeechRecognitionModule.stop() : ExpoSpeechRecognitionModule.start({ lang: "en-IN", interimResults: true })}
         >
           <Text style={{ fontSize: 20 }}>{isListening ? '●' : '🎤'}</Text>
         </TouchableOpacity>
@@ -395,7 +399,6 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
   header: { alignItems: 'center', paddingTop: 40, paddingBottom: 20, borderBottomWidth: 1 },
   dataRibbon: { width: '100%', paddingVertical: 6, marginBottom: 15 },
   ribbonText: { fontSize: 8, fontWeight: '800', textAlign: 'center', letterSpacing: 2 },
@@ -413,6 +416,5 @@ const styles = StyleSheet.create({
   micBtn: { width: 46, height: 48, borderRadius: 23, borderWidth: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000F0F' },
   input: { flex: 1, backgroundColor: '#000F0F', borderWidth: 1, borderRadius: 4, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
   sendBtn: { width: 46, height: 48, borderRadius: 4, justifyContent: 'center', alignItems: 'center' },
-  sendBtnDisabled: { backgroundColor: '#1A3333' },
   sendBtnText: { color: '#000', fontSize: 18, fontWeight: '900' },
 });
