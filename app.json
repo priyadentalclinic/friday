@@ -40,7 +40,8 @@
         "expo-contacts",
         "react-native-volume-manager",
         "react-native-zeroconf",
-        "expo-network"
+        "expo-network",
+        "react-native-tcp-socket"
       ]
     },
     "extra": {

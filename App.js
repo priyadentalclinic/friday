@@ -316,10 +316,12 @@ export default function App() {
       if (parsed.action === 'SCAN_NETWORK') {
         const ip = await Network.getIpAddressAsync();
         const subnet = ip.substring(0, ip.lastIndexOf('.'));
-        FRIDAYSpeak("Sweeping local subnet, boss. Knocking on all doors.", "TACTICAL");
-        LANPortScanner.startScan({ networkId: subnet, ports: [80, 443, 8080], timeout: 150, onFound: (d) => {}, onFinished: (list) => {
+        FRIDAYSpeak("Sweeping local subnet, boss. Searching for all 7 devices.", "TACTICAL");
+        // Increased timeout to 400ms for more reliable mobile scanning
+        LANPortScanner.startScan({ networkId: subnet, ports: [80, 443, 8080, 22, 21], timeout: 400, onFound: (d) => {}, onFinished: (list) => {
+          const count = list.length;
           const names = list.map(d => d.ip).join(', ');
-          triggerProactive(`Subnet sweep complete. Detected active signals at: ${names}`, "TACTICAL");
+          triggerProactive(`Scan complete. Detected ${count} active signals on the grid: ${names}`, "TACTICAL");
         }});
         return true;
       }
@@ -377,7 +379,7 @@ export default function App() {
           </Text>
         </View>
         <Animated.View style={[styles.logo, { transform: [{ scale: pulseAnim }], backgroundColor: theme, shadowColor: theme }]}><Text style={styles.logoText}>F</Text></Animated.View>
-        <Text style={[styles.subtitle, { color: theme }]}>{loading ? 'SYNCING...' : 'FRIDAY MARK V.4 - SENTINEL'}</Text>
+        <Text style={[styles.subtitle, { color: theme }]}>{loading ? 'SYNCING...' : 'FRIDAY MARK V.4 - SENTINEL PRIME'}</Text>
       </View>
 
       <ScrollView style={styles.chat} ref={scrollViewRef} onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}>
