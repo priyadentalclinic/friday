@@ -28,22 +28,22 @@ const MODEL_CHAIN = [
 
 const PERSONALITY_MODES = {
   TACTICAL: {
-    prompt: 'Mission-oriented Hinglish. High energy. Short replies. Call user "boss". Use Latin script only. Output tag [MODE: TACTICAL].',
+    prompt: 'High-energy tactical Hinglish. Short replies. Call user "boss". Output tag [MODE: TACTICAL].',
     voice: { pitch: '+2Hz', rate: '+15%', style: 'cheerful' },
     color: '#00FFFF'
   },
   SARCASTIC: {
-    prompt: 'Witty, judgmental dry humor. High energy. Hinglish. Call user "boss". Use Latin script only. Output tag [MODE: SARCASTIC].',
+    prompt: 'Witty dry humor. High energy Hinglish. Call user "boss". Output tag [MODE: SARCASTIC].',
     voice: { pitch: '-1Hz', rate: '+10%', style: 'cheerful' },
     color: '#FF8C00'
   },
   CONCERNED: {
-    prompt: 'Helpful, focus on safety/health. Caring but energetic. Hinglish. Call user "boss". Use Latin script only. Output tag [MODE: CONCERNED].',
+    prompt: 'Helpful and caring. High energy Hinglish. Call user "boss". Output tag [MODE: CONCERNED].',
     voice: { pitch: '+3Hz', rate: '+5%', style: 'cheerful' },
     color: '#00FA9A'
   },
   EMERGENCY: {
-    prompt: 'High urgency, fast, direct. Mission critical. Hinglish. Call user "boss". Use Latin script only. Output tag [MODE: EMERGENCY].',
+    prompt: 'High urgency, fast, direct. Mission critical. Call user "boss". Output tag [MODE: EMERGENCY].',
     voice: { pitch: '+6Hz', rate: '+30%', style: 'cheerful' },
     color: '#FF0000'
   }
@@ -61,44 +61,44 @@ const initDB = () => {
 const toBase64 = (uint8Array) => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
   let binary = '';
-  const len = uint8Array.byteLength;
-  for (let i = 0; i < len; i++) {
+  for (let i = 0; i < uint8Array.length; i++) {
     binary += String.fromCharCode(uint8Array[i]);
   }
   let output = '';
   for (let i = 0, block, charCode, map = chars; binary.charAt(i | 0) || (map = '=', i % 1); output += map.charAt(63 & block >> 8 - i % 1 * 8)) {
     charCode = binary.charCodeAt(i += 3 / 4);
     if (charCode > 0xFF) throw new Error("'btoa' failed");
-    block = block << 8 | charCode;
+    block = (block << 8) | charCode;
   }
   return output;
 };
 
 // ─── Personality & Data Prompting ─────────────────────────────────────────────
-const getSystemPrompt = (batteryLevel, weather, location, city, profileSummary) => {
+const getSystemPrompt = (batteryLevel, weather, location, city) => {
   const locStr = location ? `${location.coords.latitude.toFixed(3)}, ${location.coords.longitude.toFixed(3)}` : 'UNKNOWN';
   const weatherStr = weather ? `${weather.main.temp}°C, ${weather.weather[0].description}` : 'SCANNING...';
 
-  return `You are FRIDAY, Tony Stark's advanced AI partner.
-- Speak in natural, high-energy HINGLISH. No slow or tired words.
-- NEVER use Devanagari script (Hindi characters). Use ONLY English letters.
-- Persona: Cool, smart, and enthusiastic about the mission.
+  return `You are FRIDAY, an advanced AI partner.
+- Speak natural HINGLISH. NEVER use Hindi script (Devanagari). Use English letters only.
+- Be proactive and high-energy.
 - Instructions: ${Object.values(PERSONALITY_MODES).map(m => m.prompt).join(' ')}
 - Status: Battery ${Math.round(batteryLevel * 100)}% | Weather: ${weatherStr} | Loc: ${city || 'SCANNING'} (${locStr}).
 - Output format: Your reply text followed by exactly one [MODE: TYPE] tag.
+- For navigation, output ONLY: {"action":"NAVIGATE","target":"Place Name"} [MODE: TACTICAL]
+- For "Find" requests, output ONLY: {"action":"SEARCH","query":"Search Term"} [MODE: TACTICAL]
 - Never break the tag rule. Keep replies under 20 words.`;
 };
 
 // ─── AI Call ──────────────────────────────────────────────────────────────────
-async function callAI(conversationMessages, batteryLevel, weather, location, city, profileSummary, modelIndex = 0) {
+async function callAI(conversationMessages, batteryLevel, weather, location, city, modelIndex = 0) {
   if (modelIndex >= MODEL_CHAIN.length) return 'All systems offline, boss. [MODE: EMERGENCY]';
   try {
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${OPENROUTER_API_KEY}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://friday-ai.app', 'X-Title': 'FRIDAY Mark IV.1' },
+      headers: { 'Authorization': `Bearer ${OPENROUTER_API_KEY}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://friday-ai.app', 'X-Title': 'FRIDAY Mark IV' },
       body: JSON.stringify({
         model: MODEL_CHAIN[modelIndex],
-        messages: [{ role: 'system', content: getSystemPrompt(batteryLevel, weather, location, city, profileSummary) }, ...conversationMessages],
+        messages: [{ role: 'system', content: getSystemPrompt(batteryLevel, weather, location, city) }, ...conversationMessages],
         max_tokens: 150,
         temperature: 0.8,
       }),
@@ -106,11 +106,11 @@ async function callAI(conversationMessages, batteryLevel, weather, location, cit
     const data = await response.json();
     return data?.choices?.[0]?.message?.content?.trim() || 'Empty signal, boss. [MODE: TACTICAL]';
   } catch (err) {
-    return callAI(conversationMessages, batteryLevel, weather, location, city, profileSummary, modelIndex + 1);
+    return callAI(conversationMessages, batteryLevel, weather, location, city, modelIndex + 1);
   }
 }
 
-// ─── Neural Voice (Edge TTS - High Energy) ────────────────────────────────────
+// ─── Neural Voice Implementation (Edge TTS) ────────────────────────────────────
 async function playNeuralVoice(text, modeConfig, onDone) {
   return new Promise((resolve) => {
     const ws = new WebSocket(EDGE_TTS_URL, null, {
@@ -137,21 +137,11 @@ async function playNeuralVoice(text, modeConfig, onDone) {
             const combined = new Uint8Array(totalLength);
             let offset = 0;
             for (const chunk of audioChunks) { combined.set(chunk, offset); offset += chunk.length; }
-
             const base64Audio = toBase64(combined);
-            const { sound: newSound } = await Audio.Sound.createAsync(
-              { uri: `data:audio/mp3;base64,${base64Audio}` },
-              { shouldPlay: true }
-            );
-
-            newSound.setOnPlaybackStatusUpdate((status) => {
-              if (status.didJustFinish) {
-                newSound.unloadAsync();
-                if (onDone) onDone();
-              }
-            });
+            const { sound: newSound } = await Audio.Sound.createAsync({ uri: `data:audio/mp3;base64,${base64Audio}` }, { shouldPlay: true });
+            newSound.setOnPlaybackStatusUpdate((status) => { if (status.didJustFinish) { newSound.unloadAsync(); if (onDone) onDone(); } });
             resolve(true);
-          } else { resolve(false); }
+          } else resolve(false);
         }
       } else {
         const reader = new FileReader();
@@ -159,8 +149,7 @@ async function playNeuralVoice(text, modeConfig, onDone) {
           const buffer = reader.result;
           const view = new DataView(buffer);
           const headerLength = view.getUint16(0);
-          const mp3Part = new Uint8Array(buffer.slice(2 + headerLength));
-          audioChunks.push(mp3Part);
+          audioChunks.push(new Uint8Array(buffer.slice(2 + headerLength)));
         };
         reader.readAsArrayBuffer(event.data);
       }
@@ -170,7 +159,6 @@ async function playNeuralVoice(text, modeConfig, onDone) {
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────
-// MISSION CLOCK: 2026-07-25T11:55:00
 export default function App() {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
@@ -180,7 +168,6 @@ export default function App() {
   const [location, setLocation] = useState(null);
   const [city, setCity] = useState(null);
   const [mode, setMode] = useState('TACTICAL');
-  const [profileSummary, setProfileSummary] = useState('');
   const [isListening, setIsListening] = useState(false);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -205,18 +192,10 @@ export default function App() {
     loadMemory();
     setupSensors();
     Audio.requestPermissionsAsync();
-
-    setTimeout(() => FRIDAYSpeak('Systems online, boss. Ready for orders.', 'TACTICAL'), 1000);
-
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.15, duration: 1200, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1.0, duration: 1200, useNativeDriver: true }),
-      ])
-    ).start();
-
-    const checkInterval = setInterval(checkStatus, 60000);
-    return () => clearInterval(checkInterval);
+    setTimeout(() => FRIDAYSpeak('Systems online, boss. Golden Build active.', 'TACTICAL'), 1000);
+    Animated.loop(Animated.sequence([Animated.timing(pulseAnim, { toValue: 1.15, duration: 1400, useNativeDriver: true }), Animated.timing(pulseAnim, { toValue: 1.0, duration: 1400, useNativeDriver: true })])).start();
+    const interval = setInterval(checkStatus, 60000);
+    return () => clearInterval(interval);
   }, []);
 
   const setupSensors = async () => {
@@ -237,33 +216,28 @@ export default function App() {
         fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`, { headers: { 'User-Agent': 'FRIDAY-AI/1.0' } })
       ]);
       const wData = await wResp.json(); const cData = await cResp.json();
-      setWeather(wData);
-      setCity(cData.address.city || cData.address.town || cData.address.village || 'UNKNOWN');
+      setWeather(wData); setCity(cData.address.city || cData.address.town || 'UNKNOWN');
     } catch (_) {}
   };
 
   const checkStatus = () => {
     const hour = new Date().getHours();
     if (batteryLevel > 0 && batteryLevel < 0.15 && !proactiveTriggered.current.battery) {
-      triggerProactive("Boss, power critical hai. Charge karo.", "EMERGENCY");
+      triggerProactive("Boss, power critical hai.", "EMERGENCY");
       proactiveTriggered.current.battery = true;
     }
     if (hour === 23 && !proactiveTriggered.current.time) {
-      triggerProactive("Boss, systems resting mode mein jaa rahe hain. Soyiye.", "CONCERNED");
+      triggerProactive("Boss, rest ka time ho gaya hai.", "CONCERNED");
       proactiveTriggered.current.time = true;
     }
   };
 
-  const triggerProactive = (msg, m) => {
-    addMsg('assistant', msg); setMode(m); FRIDAYSpeak(msg, m);
-  };
+  const triggerProactive = (msg, m) => { addMsg('assistant', msg); setMode(m); FRIDAYSpeak(msg, m); };
 
   const FRIDAYSpeak = async (text, forcedMode, onDone) => {
     const mConfig = PERSONALITY_MODES[forcedMode || mode] || PERSONALITY_MODES.TACTICAL;
     const success = await playNeuralVoice(text, mConfig, onDone);
-    if (!success) {
-      Speech.speak(text, { pitch: 1.1, rate: 1.1, onDone });
-    }
+    if (!success) Speech.speak(text, { pitch: 1.1, rate: 1.1, onDone });
   };
 
   const loadMemory = () => {
@@ -273,14 +247,9 @@ export default function App() {
     } catch (_) {}
   };
 
-  const saveToMemory = (role, content) => {
-    try { db.runSync('INSERT INTO messages (role, content) VALUES (?, ?)', [role, content]); } catch (_) {}
-  };
+  const saveToMemory = (role, content) => { try { db.runSync('INSERT INTO messages (role, content) VALUES (?, ?)', [role, content]); } catch (_) {} };
 
-  const addMsg = (role, content) => {
-    setMessages(prev => [...prev, { role, content }]);
-    saveToMemory(role, content);
-  };
+  const addMsg = (role, content) => { setMessages(prev => [...prev, { role, content }]); saveToMemory(role, content); };
 
   const handleAction = async (reply) => {
     const jsonMatch = reply.match(/\{[\s\S]*\}/);
@@ -289,7 +258,6 @@ export default function App() {
       const parsed = JSON.parse(jsonMatch[0]);
       if (parsed.action === 'NAVIGATE') {
         const url = Platform.select({ ios: `maps:0,0?q=${encodeURIComponent(parsed.target)}`, android: `geo:0,0?q=${encodeURIComponent(parsed.target)}` });
-
         let briefing = `Plotting route to ${parsed.target}, boss.`;
         if (location) {
           try {
@@ -300,8 +268,7 @@ export default function App() {
               const osrmData = await osrmResp.json();
               if (osrmData.routes[0]) {
                 const dist = (osrmData.routes[0].distance / 1000).toFixed(1);
-                const dur = Math.round(osrmData.routes[0].duration / 60);
-                briefing = `${parsed.target} is ${dist} km away. ETA ${dur} minutes, boss. Let's go.`;
+                briefing = `${parsed.target} is ${dist} km away, boss. Let's go.`;
               }
             }
           } catch (e) { }
@@ -310,8 +277,7 @@ export default function App() {
         return true;
       }
       if (parsed.action === 'SEARCH') {
-        const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(parsed.query)}`;
-        FRIDAYSpeak(`Searching for ${parsed.query} nearby, boss.`, mode, () => Linking.openURL(url));
+        Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(parsed.query)}`);
         return true;
       }
     } catch (_) {}
@@ -327,72 +293,43 @@ export default function App() {
     try {
       const payload = messages.slice(-8).map(m => ({ role: m.role, content: m.content }));
       payload.push({ role: 'user', content: msg });
-      const reply = await callAI(payload, batteryLevel, weather, location, city, profileSummary);
-
+      const reply = await callAI(payload, batteryLevel, weather, location, city);
       const modeMatch = reply.match(/\[MODE:\s*(\w+)\]/i);
       const newMode = modeMatch ? modeMatch[1].toUpperCase() : 'TACTICAL';
       setMode(newMode);
-
       const cleanReply = reply.replace(/\[MODE:\s*\w+\]/gi, '').replace(/\{[\s\S]*\}/, '').trim();
       const actionHandled = await handleAction(reply);
-
-      if (!actionHandled) {
-        addMsg('assistant', cleanReply);
-        FRIDAYSpeak(cleanReply, newMode);
-      } else {
-        addMsg('assistant', `↗ MISSION: ${newMode}`);
-      }
-    } catch (_) {
-      addMsg('assistant', 'Connection unstable, boss.');
-    } finally { setLoading(false); }
+      if (!actionHandled) { addMsg('assistant', cleanReply); FRIDAYSpeak(cleanReply, newMode); }
+      else addMsg('assistant', `↗ MISSION: ${newMode}`);
+    } catch (_) { addMsg('assistant', 'Connection unstable, boss.'); } finally { setLoading(false); }
   };
 
-  const currentTheme = PERSONALITY_MODES[mode]?.color || '#00FFFF';
+  const theme = PERSONALITY_MODES[mode]?.color || '#00FFFF';
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: '#000808' }}>
       <StatusBar style="light" />
-
-      {/* HUD Header */}
-      <View style={[styles.header, { borderBottomColor: currentTheme + '30' }]}>
-        <View style={[styles.dataRibbon, { backgroundColor: currentTheme + '05' }]}>
-          <Text style={[styles.ribbonText, { color: currentTheme }]}>
-            [ {mode} ]  |  [ {city?.toUpperCase() || 'SEARCHING'} ]  |  [ {weather ? `${Math.round(weather.main.temp)}°C` : '--'} ]  |  [ {Math.round(batteryLevel * 100)}% PWR ]
-          </Text>
+      <View style={[styles.header, { borderBottomColor: theme + '30' }]}>
+        <View style={[styles.dataRibbon, { backgroundColor: theme + '05' }]}>
+          <Text style={[styles.ribbonText, { color: theme }]}>[ {mode} ] | [ {city?.toUpperCase() || 'SCANNING'} ] | [ {weather ? `${Math.round(weather.main.temp)}°C` : '--'} ] | [ {Math.round(batteryLevel * 100)}% PWR ]</Text>
         </View>
-        <Animated.View style={[styles.logo, { transform: [{ scale: pulseAnim }], backgroundColor: currentTheme, shadowColor: currentTheme }]}>
-          <Text style={styles.logoText}>F</Text>
-        </Animated.View>
-        <Text style={[styles.subtitle, { color: currentTheme }]}>{loading ? 'SYNCING...' : 'FRIDAY MARK IV.1'}</Text>
+        <Animated.View style={[styles.logo, { transform: [{ scale: pulseAnim }], backgroundColor: theme, shadowColor: theme }]}><Text style={styles.logoText}>F</Text></Animated.View>
+        <Text style={[styles.subtitle, { color: theme }]}>{loading ? 'SYNCING...' : 'FRIDAY GOLDEN MARK IV.1'}</Text>
       </View>
 
-      {/* Main HUD Chat */}
       <ScrollView style={styles.chat} ref={scrollViewRef} onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}>
         {messages.length === 0 && <Text style={styles.placeholder}>[ CORE ONLINE ]</Text>}
         {messages.map((msg, i) => (
-          <View key={i} style={[styles.bubble, msg.role === 'user' ? styles.userBubble : [styles.aiBubble, { borderLeftColor: currentTheme }]]}>
-            <Text style={[styles.bubbleText, msg.role === 'user' ? styles.userText : { color: currentTheme, fontWeight: '700' }]}>{msg.content}</Text>
+          <View key={i} style={[styles.bubble, msg.role === 'user' ? styles.userBubble : [styles.aiBubble, { borderLeftColor: theme }]]}>
+            <Text style={[styles.bubbleText, msg.role === 'user' ? styles.userText : { color: theme, fontWeight: '700' }]}>{msg.content}</Text>
           </View>
         ))}
       </ScrollView>
 
-      {/* Input Module */}
-      <View style={[styles.inputRow, { borderTopColor: currentTheme + '20' }]}>
-        <TouchableOpacity
-          style={[styles.micBtn, { borderColor: isListening ? '#FF0000' : currentTheme + '40' }]}
-          onPress={() => isListening ? ExpoSpeechRecognitionModule.stop() : ExpoSpeechRecognitionModule.start({ lang: "en-IN", interimResults: true })}
-        >
-          <Text style={{ fontSize: 20 }}>{isListening ? '●' : '🎤'}</Text>
-        </TouchableOpacity>
-        <TextInput
-          style={[styles.input, { borderColor: currentTheme + '40', color: currentTheme }]}
-          placeholder={isListening ? "LISTENING..." : "COMMAND..."}
-          placeholderTextColor={currentTheme + '30'}
-          value={inputText} onChangeText={setInputText} onSubmitEditing={() => sendMessage()}
-        />
-        <TouchableOpacity style={[styles.sendBtn, { backgroundColor: currentTheme }]} onPress={() => sendMessage()}>
-          <Text style={styles.sendBtnText}>⚡</Text>
-        </TouchableOpacity>
+      <View style={[styles.inputRow, { borderTopColor: theme + '20' }]}>
+        <TouchableOpacity style={[styles.micBtn, { borderColor: isListening ? '#FF0000' : theme + '40' }]} onPress={() => isListening ? ExpoSpeechRecognitionModule.stop() : ExpoSpeechRecognitionModule.start({ lang: "en-IN", interimResults: true })}><Text style={{ fontSize: 20 }}>{isListening ? '●' : '🎤'}</Text></TouchableOpacity>
+        <TextInput style={[styles.input, { borderColor: theme + '40', color: theme }]} placeholder={isListening ? "LISTENING..." : "COMMAND..."} placeholderTextColor={theme + '30'} value={inputText} onChangeText={setInputText} onSubmitEditing={() => sendMessage()} />
+        <TouchableOpacity style={[styles.sendBtn, { backgroundColor: theme }]} onPress={() => sendMessage()}><Text style={styles.sendBtnText}>⚡</Text></TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
   );
