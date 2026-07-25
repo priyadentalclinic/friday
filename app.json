@@ -24,7 +24,9 @@
         "CHANGE_WIFI_MULTICAST_STATE",
         "ACCESS_NETWORK_STATE",
         "FOREGROUND_SERVICE",
-        "FOREGROUND_SERVICE_MICROPHONE"
+        "FOREGROUND_SERVICE_MICROPHONE",
+        "POST_NOTIFICATIONS",
+        "WAKE_LOCK"
       ],
       "plugins": [
         [
@@ -41,7 +43,9 @@
         "react-native-volume-manager",
         "react-native-zeroconf",
         "expo-network",
-        "react-native-tcp-socket"
+        "react-native-tcp-socket",
+        "llama.rn",
+        "./plugins/withLocalModel"
       ]
     },
     "extra": {

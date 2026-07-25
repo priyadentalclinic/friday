@@ -7,8 +7,9 @@ on:
 
 jobs:
   build-apk:
-    name: Build APK on GitHub (No Queue)
+    name: Build Mark V.5 Sentinel Pro (Gemma Injection)
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -29,6 +30,14 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Create local_models directory
+        run: mkdir -p local_models
+
+      - name: Inject Local Brain (Gemma 2b GGUF)
+        run: |
+          echo "[FRIDAY] Accessing high-speed satellite link for model injection..."
+          curl -L "https://huggingface.co/google/gemma-2b-it-GGUF/resolve/main/gemma-2b-it-q4_k_m.gguf" -o local_models/gemma-2b-it-q4_k_m.gguf
+
       - name: Cache C++ Build
         uses: actions/cache@v4
         with:
@@ -37,7 +46,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cxx-
 
-      - name: Install npm dependencies
+      - name: Install dependencies
         run: npm install --prefer-offline --legacy-peer-deps
 
       - name: Create .env file
@@ -47,8 +56,8 @@ jobs:
       - name: Install Expo CLI
         run: npm install -g @expo/cli
 
-      - name: Prebuild Android (generates native android/ folder)
-        run: npx expo prebuild --platform android
+      - name: Prebuild Android (Sentinel Prime)
+        run: npx expo prebuild --platform android --no-install
 
       - name: Build Expo Android Bundle
         run: npx expo export:embed --platform android --dev false --entry-file node_modules/expo/AppEntry.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res
@@ -56,16 +65,16 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 
-      - name: Build debug APK
+      - name: Build Sentinel Pro APK (1.6GB)
         working-directory: android
         run: ./gradlew assembleDebug -PreactNativeArchitectures=arm64-v8a --no-daemon
         env:
-          GRADLE_OPTS: "-Xmx4096m -Xms512m -Dfile.encoding=UTF-8 -Dorg.gradle.parallel=true -Dorg.gradle.caching=true"
+          GRADLE_OPTS: "-Xmx6144m -Xms1024m -Dfile.encoding=UTF-8 -Dorg.gradle.parallel=true -Dorg.gradle.caching=true"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FRIDAY-MARK-V-SYSTEM-MASTER
+          name: FRIDAY-MARK-V-5-SENTINEL-PRO
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
 
