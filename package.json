@@ -27,7 +27,7 @@
     "expo-speech-recognition": "~3.1.0",
     "expo-sqlite": "~16.0.10",
     "expo-status-bar": "~3.0.9",
-    "llama.rn": "^0.14.0",
+    "llama.rn": "~0.12.6",
     "react-native-background-actions": "^3.0.1",
     "react-native-udp": "~4.1.8",
     "react": "19.1.0",

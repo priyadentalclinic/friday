@@ -120,14 +120,15 @@ const getSystemPrompt = (batteryLevel, weather, location, city, brainType) => {
 let localLlama = null;
 
 async function callAI(conversationMessages, batteryLevel, weather, location, city, isOffline = false) {
-  const simpleTask = conversationMessages[conversationMessages.length - 1].content.length < 20;
+  const lastMsg = conversationMessages[conversationMessages.length - 1].content;
+  const simpleTask = lastMsg.length < 30 || /torch|light|volume|brightness|call|whatsapp/i.test(lastMsg);
 
   if (isOffline || simpleTask) {
     if (localLlama) {
       try {
         const result = await localLlama.completion({
-          prompt: getSystemPrompt(batteryLevel, weather, location, city, "LOCAL GEMMA") + "\nUser: " + conversationMessages[conversationMessages.length-1].content + "\nFRIDAY:",
-          n_predict: 50,
+          prompt: getSystemPrompt(batteryLevel, weather, location, city, "LOCAL LLAMA") + "\nUser: " + lastMsg + "\nFRIDAY:",
+          n_predict: 60,
         });
         return result.text.trim();
       } catch (e) { console.log("[FRIDAY] Local Inference Error:", e.message); }
@@ -135,7 +136,6 @@ async function callAI(conversationMessages, batteryLevel, weather, location, cit
     if (isOffline) return "Satellite link offline, boss. Local brain failed. [MODE: EMERGENCY]";
   }
 
-  // Cloud Fallback
   return callCloudAI(conversationMessages, batteryLevel, weather, location, city);
 }
 
@@ -201,7 +201,7 @@ async function playNeuralVoice(text, modeConfig, onDone) {
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────
-// MISSION CLOCK: 2026-07-25T18:00:00
+// MISSION CLOCK: 2026-07-25T18:45:00
 export default function App() {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
@@ -225,28 +225,51 @@ export default function App() {
     if (e.results[0]?.transcript) {
       const text = e.results[0].transcript;
       if (isSentinelOn && text.toLowerCase().includes("friday")) handleWakeWord();
-      else if (!isSentinelOn) { setInputText(text); if (e.isFinal) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setTimeout(() => sendMessage(text), 600); } }
+      else if (!isSentinelOn) {
+        setInputText(text);
+        if (e.isFinal) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          setTimeout(() => sendMessage(text), 600);
+        }
+      }
     }
   });
 
-  const startSentinel = useCallback(() => {
-    ExpoSpeechRecognitionModule.start({ lang: "en-IN", interimResults: true, continuous: true });
+  const startSentinel = useCallback(async () => {
+    try {
+      await ExpoSpeechRecognitionModule.start({ lang: "en-IN", interimResults: true, continuous: true });
+    } catch (e) { console.log("[FRIDAY] Sentinel Start Error:", e.message); }
   }, []);
 
   const handleWakeWord = async () => {
-    setIsSentinelOn(false); ExpoSpeechRecognitionModule.stop();
+    setIsSentinelOn(false);
+    ExpoSpeechRecognitionModule.stop();
+    // Medium Haptic Pulse (Balanced for professional feel)
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     await FRIDAYSpeak("Yes boss? Systems online.", "TACTICAL");
-    setIsListening(true); ExpoSpeechRecognitionModule.start({ lang: "en-IN", interimResults: true });
+    setIsListening(true);
+    ExpoSpeechRecognitionModule.start({ lang: "en-IN", interimResults: true });
   };
 
   useEffect(() => {
     initDB(); loadMemory(); setupSensors(); setupLocalLLM();
     Audio.requestPermissionsAsync();
     setTimeout(() => FRIDAYSpeak('Sentinel Pro online, boss. Perimeters active.', 'TACTICAL'), 1500);
-    Animated.loop(Animated.sequence([Animated.timing(pulseAnim, { toValue: 1.15, duration: 1200, useNativeDriver: true }), Animated.timing(pulseAnim, { toValue: 1.0, duration: 1200, useNativeDriver: true })])).start();
-    Animated.loop(Animated.sequence([Animated.timing(auraAnim, { toValue: 1, duration: 2000, useNativeDriver: true }), Animated.timing(auraAnim, { toValue: 0, duration: 2000, useNativeDriver: true })])).start();
-    return () => BackgroundService.stop();
+
+    Animated.loop(Animated.sequence([
+      Animated.timing(pulseAnim, { toValue: 1.15, duration: 1200, useNativeDriver: true }),
+      Animated.timing(pulseAnim, { toValue: 1.0, duration: 1200, useNativeDriver: true })
+    ])).start();
+
+    Animated.loop(Animated.sequence([
+      Animated.timing(auraAnim, { toValue: 1, duration: 2000, useNativeDriver: true }),
+      Animated.timing(auraAnim, { toValue: 0, duration: 2000, useNativeDriver: true })
+    ])).start();
+
+    return () => {
+      if (BackgroundService.isRunning()) BackgroundService.stop();
+      ExpoSpeechRecognitionModule.stop();
+    };
   }, []);
 
   const setupLocalLLM = async () => {
@@ -254,13 +277,9 @@ export default function App() {
       const modelPath = `${FileSystem.documentDirectory}/${LOCAL_MODEL_NAME}`;
       const info = await FileSystem.getInfoAsync(modelPath);
       if (!info.exists) {
-        // Injected directly into Android assets via plugin
         const assetUri = Platform.OS === 'android'
           ? `file:///android_asset/${LOCAL_MODEL_NAME}`
           : `${FileSystem.bundleDirectory}/${LOCAL_MODEL_NAME}`;
-
-        // For llama.rn, we still usually need to copy it to DocumentDirectory
-        // to get a real POSIX file path for llama.cpp
         await FileSystem.copyAsync({ from: assetUri, to: modelPath });
       }
       localLlama = await initLlama({ model: modelPath, use_mlock: false, n_ctx: 1024, n_threads: 4 });
@@ -322,25 +341,19 @@ export default function App() {
       if (parsed.action === 'TORCH') { if (isCameraReady) { setTimeout(() => setTorchOn(parsed.state === 'on'), 200); return true; } return false; }
       if (parsed.action === 'SCAN_NETWORK') {
         const ip = await Network.getIpAddressAsync(); const subnet = ip.substring(0, ip.lastIndexOf('.'));
-        FRIDAYSpeak("Forging into local network, boss. Auditing all 7 sectors.", "TACTICAL");
+        FRIDAYSpeak("Forging into local network, boss. Auditing all nodes.", "TACTICAL");
         LANPortScanner.startScan({ networkId: subnet, ports: [80, 443, 8080], timeout: 400, onFinished: (list) => {
           const names = list.map(d => d.ip).join(', ');
-          triggerProactive(`Audit complete. Detected active nodes at: ${names}. Perimeter secure.`, "TACTICAL");
+          addMsg('assistant', `Audit complete. Detected active nodes at: ${names}. Perimeter secure.`);
+          FRIDAYSpeak("Audit complete, boss. Perimeter secure.", "TACTICAL");
         }}); return true;
-      }
-      if (parsed.action === 'AUDIT_DEVICE') {
-        FRIDAYSpeak(`Auditing node ${parsed.ip}, boss. Grabbing banners...`, "TACTICAL");
-        // Simulated banner grab for Mark V
-        setTimeout(() => triggerProactive(`Node ${parsed.ip} identified as Linux/Workstation. Port 80 exposed. Recommended closure.`, "CONCERNED"), 3000);
-        return true;
       }
       if (parsed.action === 'VOLUME') { await VolumeManager.setVolume(parsed.level); return true; }
       if (parsed.action === 'CALL') {
         const { status } = await Contacts.requestPermissionsAsync();
         if (status === 'granted') {
           const { data } = await Contacts.getContactsAsync({ fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers] });
-          const valid = data.filter(c => c.name && c.name.length > 1);
-          const candidates = valid.map(c => ({ ...c, score: getSimilarity(parsed.name, c.name) }));
+          const candidates = data.filter(c => c.name && c.name.length > 1).map(c => ({ ...c, score: getSimilarity(parsed.name, c.name) }));
           candidates.sort((a, b) => b.score - a.score);
           if (candidates[0] && candidates[0].score > 0.6) {
             const phone = candidates[0].phoneNumbers?.[0]?.number;
@@ -354,14 +367,16 @@ export default function App() {
 
   const sendMessage = async (overrideText) => {
     const msg = (overrideText || inputText).trim(); if (!msg || loading) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); addMsg('user', msg); setInputText(''); setLoading(true);
+    addMsg('user', msg); setInputText(''); setLoading(true);
     try {
       const payload = messages.slice(-8).map(m => ({ role: m.role, content: m.content }));
       payload.push({ role: 'user', content: msg });
       const network = await Network.getNetworkStateAsync();
       const reply = await callAI(payload, batteryLevel, weather, location, city, !network.isConnected);
+
       const modeMatch = reply.match(/\[MODE:\s*(\w+)\]/i);
       const newMode = modeMatch ? modeMatch[1].toUpperCase() : 'TACTICAL'; setMode(newMode);
+
       const cleanReply = reply.replace(/\[MODE:\s*\w+\]/gi, '').replace(/\{[\s\S]*\}/, '').trim();
       const actionHandled = await handleAction(reply);
       if (!actionHandled) { addMsg('assistant', cleanReply); FRIDAYSpeak(cleanReply, newMode); }
@@ -386,7 +401,7 @@ export default function App() {
           </Text>
         </View>
         <Animated.View style={[styles.logo, { transform: [{ scale: pulseAnim }], backgroundColor: theme, shadowColor: theme }]}><Text style={styles.logoText}>F</Text></Animated.View>
-        <Text style={[styles.subtitle, { color: theme }]}>{loading ? 'SYNCING...' : 'FRIDAY MARK V.5 - SENTINEL PRO'}</Text>
+        <Text style={[styles.subtitle, { color: theme }]}>{loading ? 'SYNCING...' : 'FRIDAY SENTINEL PRO - ETERNITY SYNC'}</Text>
       </View>
 
       <ScrollView style={styles.chat} ref={scrollViewRef} onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}>

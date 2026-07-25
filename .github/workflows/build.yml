@@ -7,8 +7,8 @@ on:
 
 jobs:
   build-apk:
-    name: Build Mark V.5 Sentinel Pro (Llama 1B Injection)
-    runs-on: ubuntu-latest
+    name: Build Mark V.5 Sentinel Pro (16GB ARM)
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
 
     steps:
@@ -56,7 +56,7 @@ jobs:
       - name: Install Expo CLI
         run: npm install -g @expo/cli
 
-      - name: Prebuild Android (Sentinel Prime)
+      - name: Prebuild Android (Sentinel Pro)
         run: npx expo prebuild --platform android --no-install
 
       - name: Build Expo Android Bundle
@@ -65,7 +65,7 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 
-      - name: Build Sentinel Pro APK (900MB)
+      - name: Build Sentinel Pro APK (16GB RAM mode)
         working-directory: android
         run: ./gradlew assembleDebug -PreactNativeArchitectures=arm64-v8a --no-daemon
         env:
