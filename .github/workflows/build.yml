@@ -18,7 +18,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '20'
           cache: 'npm'
 
       - name: Setup Java 17
@@ -31,12 +31,12 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Create local_models directory
-        run: mkdir -p local_models
+        run: mkdir -p android/app/src/main/assets
 
       - name: Inject Local Brain (Llama 3.2 1B GGUF)
         run: |
           echo "[FRIDAY] Accessing high-speed satellite link for model injection..."
-          curl -L "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf" -o local_models/llama-3.2-1b-instruct-q4_k_m.gguf
+          curl -L "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf" -o android/app/src/main/assets/llama-3.2-1b-instruct-q4_k_m.gguf
 
       - name: Cache C++ Build
         uses: actions/cache@v4
