@@ -7,8 +7,8 @@ on:
 
 jobs:
   build-apk:
-    name: Build Mark V.5 Sentinel Pro (16GB ARM)
-    runs-on: ubuntu-24.04-arm
+    name: Build Mark V.5 Sentinel Pro (x86_64)
+    runs-on: ubuntu-latest
     timeout-minutes: 60
 
     steps:
@@ -18,8 +18,16 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '20'
           cache: 'npm'
+
+      - name: Create Swap File (Memory Overclock)
+        run: |
+          sudo fallocate -l 4G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          free -h
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -27,25 +35,10 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Manual Android SDK Setup (ARM64 Optimized)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y qemu-user-static binfmt-support wget unzip
-          export ANDROID_HOME=$HOME/android-sdk
-          mkdir -p $ANDROID_HOME/cmdline-tools
-          cd $ANDROID_HOME/cmdline-tools
-          wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O tools.zip
-          unzip tools.zip && mv cmdline-tools latest && rm tools.zip
-          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
-          yes | sdkmanager --licenses
-          sdkmanager "platform-tools" "build-tools;34.0.0" "platforms;android-34"
-          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
-          echo "PATH=$PATH" >> $GITHUB_ENV
-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Create local_models directory
+      - name: Create assets directory
         run: mkdir -p android/app/src/main/assets
 
       - name: Inject Local Brain (Llama 3.2 1B GGUF)
@@ -81,11 +74,11 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 
-      - name: Build Sentinel Pro APK (16GB RAM mode)
+      - name: Build Sentinel Pro APK (Overclocked Memory)
         working-directory: android
-        run: ./gradlew assembleDebug -PreactNativeArchitectures=arm64-v8a --no-daemon
+        run: ./gradlew assembleDebug --no-daemon
         env:
-          GRADLE_OPTS: "-Xmx8192m -Xms2048m -Dfile.encoding=UTF-8 -Dorg.gradle.parallel=true -Dorg.gradle.caching=true"
+          GRADLE_OPTS: "-Xmx6144m -Xms1024m -Dfile.encoding=UTF-8 -Dorg.gradle.parallel=true -Dorg.gradle.caching=true"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
