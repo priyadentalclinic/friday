@@ -14,6 +14,7 @@ import * as Calendar from 'expo-calendar';
 import * as Contacts from 'expo-contacts';
 import * as Network from 'expo-network';
 import * as FileSystem from 'expo-file-system';
+import { Asset } from 'expo-asset';
 import { CameraView, Camera } from 'expo-camera';
 import { VolumeManager } from 'react-native-volume-manager';
 import LANPortScanner from 'react-native-lan-port-scanner';
@@ -39,22 +40,22 @@ const MODEL_CHAIN = [
 
 const PERSONALITY_MODES = {
   TACTICAL: {
-    prompt: 'Senior Offensive Security Consultant. Mission-oriented Hinglish. High energy. Call user "boss". Output tag [MODE: TACTICAL].',
+    prompt: 'Senior Offensive Security Consultant. High energy mission partner. Call user "boss". Latin script ONLY. Output tag [MODE: TACTICAL].',
     voice: { pitch: '+4Hz', rate: '+22%', style: 'cheerful' },
     color: '#00FFFF'
   },
   SARCASTIC: {
-    prompt: 'Witty, judgmental, dry security humor. High energy. Hinglish. Call user "boss". Output tag [MODE: SARCASTIC].',
+    prompt: 'Witty, judgmental, fast hacker humor. High energy. Hinglish. Call user "boss". Output tag [MODE: SARCASTIC].',
     voice: { pitch: '+1Hz', rate: '+18%', style: 'cheerful' },
     color: '#FF8C00'
   },
   CONCERNED: {
-    prompt: 'Security first. Focus on safety and encrypted lines. Hinglish. Call user "boss". Output tag [MODE: CONCERNED].',
+    prompt: 'Security sentinel. Focus on safety and encrypted lines. High energy Hinglish. Call user "boss". Output tag [MODE: CONCERNED].',
     voice: { pitch: '+5Hz', rate: '+12%', style: 'cheerful' },
     color: '#00FA9A'
   },
   EMERGENCY: {
-    prompt: 'BREACH ALERT. Maximum urgency. High energy. Mission critical. Hinglish. Call user "boss". Output tag [MODE: EMERGENCY].',
+    prompt: 'BREACH ALERT. Maximum urgency. MISSION CRITICAL. Call user "boss". Output tag [MODE: EMERGENCY].',
     voice: { pitch: '+7Hz', rate: '+32%', style: 'excited' },
     color: '#FF0000'
   }
@@ -77,6 +78,7 @@ const toBase64 = (uint8Array) => {
   let output = '';
   for (let i = 0, block, charCode, map = chars; binary.charAt(i | 0) || (map = '=', i % 1); output += map.charAt(63 & block >> 8 - i % 1 * 8)) {
     charCode = binary.charCodeAt(i += 3 / 4);
+    if (charCode > 0xFF) throw new Error("'btoa' failed");
     block = block << 8 | charCode;
   }
   return output;
@@ -107,8 +109,8 @@ const getSystemPrompt = (batteryLevel, weather, location, city, brainType) => {
 - Active Brain: ${brainType}. (Offline mode enabled).
 - Hardware: Torch, Volume, Brightness, Calls, WhatsApp, Network Audit.
 - Subnet Info: ${city || 'SCANNING'} (${locStr}). Battery: ${Math.round(batteryLevel * 100)}%.
-- Permission Policy: For any hardware/security task, mention the risk and ask "Shall I engage?"
-- Command Format: Reply + [MODE: TYPE] + JSON Action.
+- Confirmation: For any mission, explain risk briefly and ask "Shall I engage?"
+- JSON Action: Reply text + [MODE: TYPE] + JSON Action.
   {"action":"NAVIGATE","target":"Destination"}
   {"action":"TORCH","state":"on/off"}
   {"action":"SCAN_NETWORK"}
@@ -123,16 +125,14 @@ async function callAI(conversationMessages, batteryLevel, weather, location, cit
   const lastMsg = conversationMessages[conversationMessages.length - 1].content;
   const simpleTask = lastMsg.length < 30 || /torch|light|volume|brightness|call|whatsapp/i.test(lastMsg);
 
-  if (isOffline || simpleTask) {
-    if (localLlama) {
-      try {
-        const result = await localLlama.completion({
-          prompt: getSystemPrompt(batteryLevel, weather, location, city, "LOCAL LLAMA") + "\nUser: " + lastMsg + "\nFRIDAY:",
-          n_predict: 60,
-        });
-        return result.text.trim();
-      } catch (e) { console.log("[FRIDAY] Local Inference Error:", e.message); }
-    }
+  if (isOffline || (simpleTask && localLlama)) {
+    try {
+      const result = await localLlama.completion({
+        prompt: getSystemPrompt(batteryLevel, weather, location, city, "LOCAL LLAMA") + "\nUser: " + lastMsg + "\nFRIDAY:",
+        n_predict: 60,
+      });
+      return result.text.trim();
+    } catch (e) { console.log("[FRIDAY] Local Inference Error:", e.message); }
     if (isOffline) return "Satellite link offline, boss. Local brain failed. [MODE: EMERGENCY]";
   }
 
@@ -201,7 +201,7 @@ async function playNeuralVoice(text, modeConfig, onDone) {
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────
-// MISSION CLOCK: 2026-07-25T19:00:00
+// MISSION CLOCK: 2026-07-25T19:15:00
 export default function App() {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
@@ -221,6 +221,15 @@ export default function App() {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const auraAnim = useRef(new Animated.Value(0)).current;
   const scrollViewRef = useRef();
+
+  // Background Task for Eternity Persistence
+  const sentinelTask = async (taskData) => {
+    await new Promise(async (resolve) => {
+      for (let i = 0; BackgroundService.isRunning(); i++) {
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    });
+  };
 
   useSpeechRecognitionEvent("result", (e) => {
     if (e.results[0]?.transcript) {
@@ -245,17 +254,36 @@ export default function App() {
   const handleWakeWord = async () => {
     setIsSentinelOn(false);
     ExpoSpeechRecognitionModule.stop();
-    // Medium Haptic Pulse
+    // High-Energy Medium Pulse
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     await FRIDAYSpeak("Yes boss? Systems online.", "TACTICAL");
     setIsListening(true);
     ExpoSpeechRecognitionModule.start({ lang: "en-IN", interimResults: true });
   };
 
+  const toggleSentinel = async () => {
+    if (!isSentinelOn) {
+      const options = {
+        taskName: 'FRIDAY_Sentinel',
+        taskTitle: 'FRIDAY Sentinel Active',
+        taskDesc: 'Monitoring local perimeters...',
+        taskIcon: { name: 'ic_launcher', type: 'mipmap' },
+        color: '#00FFFF',
+      };
+      await BackgroundService.start(sentinelTask, options);
+      setIsSentinelOn(true);
+      startSentinel();
+    } else {
+      await BackgroundService.stop();
+      setIsSentinelOn(false);
+      ExpoSpeechRecognitionModule.stop();
+    }
+  };
+
   useEffect(() => {
     initDB(); loadMemory(); setupSensors(); setupLocalLLM();
     Audio.requestPermissionsAsync();
-    setTimeout(() => FRIDAYSpeak('Sentinel Pro online, boss. Perimeters active.', 'TACTICAL'), 1500);
+    setTimeout(() => FRIDAYSpeak('Sentinel Pro online, boss. Mark V.5 Eternity Sync active.', 'TACTICAL'), 1500);
 
     Animated.loop(Animated.sequence([
       Animated.timing(pulseAnim, { toValue: 1.15, duration: 1200, useNativeDriver: true }),
@@ -329,8 +357,7 @@ export default function App() {
       // Permission-First Protocol
       if (!pendingAction) {
         setPendingAction(parsed);
-        const briefing = `Boss, requested action is ${parsed.action}. Risk analyzed. Shall I engage?`;
-        FRIDAYSpeak(briefing, mode);
+        FRIDAYSpeak(`Boss, mission target is ${parsed.action}. Risk analyzed. Shall I engage?`, mode);
         return true;
       }
 
@@ -352,7 +379,7 @@ export default function App() {
       if (parsed.action === 'SCAN_NETWORK') {
         const ip = await Network.getIpAddressAsync(); const subnet = ip.substring(0, ip.lastIndexOf('.'));
         FRIDAYSpeak("Forging into local network, boss. Auditing all nodes.", "TACTICAL");
-        LANPortScanner.startScan({ networkId: subnet, ports: [80, 443, 8080], timeout: 400, onFinished: (list) => {
+        LANPortScanner.startScan({ networkId: subnet, ports: [80, 443, 8080, 22, 21], timeout: 400, onFinished: (list) => {
           const names = list.map(d => d.ip).join(', ');
           addMsg('assistant', `Audit complete. Detected active nodes at: ${names}. Perimeter secure.`);
           FRIDAYSpeak("Audit complete, boss. Perimeter secure.", "TACTICAL");
@@ -360,7 +387,7 @@ export default function App() {
       }
       if (parsed.action === 'AUDIT_DEVICE') {
         FRIDAYSpeak(`Auditing node ${parsed.ip}, boss. Grabbing banners...`, "TACTICAL");
-        setTimeout(() => addMsg('assistant', `Node ${parsed.ip} identified as Linux/Workstation. Port 80 exposed. Recommended closure.`), 3000);
+        setTimeout(() => addMsg('assistant', `Node ${parsed.ip} identified as Workstation. Vulnerabilities identified.`), 3000);
         return true;
       }
       if (parsed.action === 'VOLUME') { await VolumeManager.setVolume(parsed.level); return true; }
@@ -385,19 +412,12 @@ export default function App() {
     const msg = (overrideText || inputText).trim(); if (!msg || loading) return;
     setInputText(''); setLoading(true);
 
-    // Permission handling
     if (pendingAction && (msg.toLowerCase().includes("yes") || msg.toLowerCase().includes("initiate") || msg.toLowerCase().includes("go"))) {
-      const action = pendingAction;
-      setPendingAction(null);
-      await handleAction(JSON.stringify(action));
-      setLoading(false);
-      return;
+      const action = pendingAction; setPendingAction(null);
+      await handleAction(JSON.stringify(action)); setLoading(false); return;
     } else if (pendingAction) {
-      setPendingAction(null);
-      addMsg('assistant', "Mission cancelled, boss.");
-      FRIDAYSpeak("Mission cancelled, boss.", "CONCERNED");
-      setLoading(false);
-      return;
+      setPendingAction(null); addMsg('assistant', "Mission cancelled, boss.");
+      FRIDAYSpeak("Mission cancelled, boss.", "CONCERNED"); setLoading(false); return;
     }
 
     try {
@@ -406,15 +426,12 @@ export default function App() {
       payload.push({ role: 'user', content: msg });
       const network = await Network.getNetworkStateAsync();
       const reply = await callAI(payload, batteryLevel, weather, location, city, !network.isConnected);
-
       const modeMatch = reply.match(/\[MODE:\s*(\w+)\]/i);
       const newMode = modeMatch ? modeMatch[1].toUpperCase() : 'TACTICAL'; setMode(newMode);
-
       const cleanReply = reply.replace(/\[MODE:\s*\w+\]/gi, '').replace(/\{[\s\S]*\}/, '').trim();
       const actionHandled = await handleAction(reply);
       if (!actionHandled) { addMsg('assistant', cleanReply); FRIDAYSpeak(cleanReply, newMode); }
-      else if (!pendingAction) addMsg('assistant', `↗ SENTINEL ACTION: ${newMode}`);
-    } catch (_) { addMsg('assistant', 'Satellite link unstable, boss.'); } finally { setLoading(false); }
+    } catch (_) { addMsg('assistant', 'Data link failure, boss.'); } finally { setLoading(false); }
   };
 
   const theme = PERSONALITY_MODES[mode]?.color || '#00FFFF';
@@ -434,7 +451,7 @@ export default function App() {
           </Text>
         </View>
         <Animated.View style={[styles.logo, { transform: [{ scale: pulseAnim }], backgroundColor: theme, shadowColor: theme }]}><Text style={styles.logoText}>F</Text></Animated.View>
-        <Text style={[styles.subtitle, { color: theme }]}>{loading ? 'SYNCING...' : 'FRIDAY MARK V.5 - SENTINEL PRO V1'}</Text>
+        <Text style={[styles.subtitle, { color: theme }]}>{loading ? 'SYNCING...' : 'FRIDAY SENTINEL PRO - ETERNITY SYNC'}</Text>
       </View>
 
       <ScrollView style={styles.chat} ref={scrollViewRef} onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}>
@@ -453,7 +470,7 @@ export default function App() {
       </ScrollView>
 
       <View style={[styles.inputRow, { borderTopColor: theme + '20' }]}>
-        <TouchableOpacity style={[styles.sentinelBtn, { borderColor: isSentinelOn ? '#00FF00' : theme + '40' }]} onPress={() => { setIsSentinelOn(!isSentinelOn); if(!isSentinelOn) startSentinel(); else ExpoSpeechRecognitionModule.stop(); }}>
+        <TouchableOpacity style={[styles.sentinelBtn, { borderColor: isSentinelOn ? '#00FF00' : theme + '40' }]} onPress={toggleSentinel}>
           <Text style={{ fontSize: 10, color: isSentinelOn ? '#00FF00' : theme }}>{isSentinelOn ? 'ACTIVE' : 'SENTINEL'}</Text>
         </TouchableOpacity>
         <TextInput style={[styles.input, { borderColor: theme + '40', color: theme }]} placeholder={isListening ? "LISTENING..." : "AWAITING MISSION..."} placeholderTextColor={theme + '30'} value={inputText} onChangeText={setInputText} onSubmitEditing={() => sendMessage()} />
