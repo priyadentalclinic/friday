@@ -12,7 +12,7 @@ import * as Location from 'expo-location';
 import * as Brightness from 'expo-brightness';
 import * as Calendar from 'expo-calendar';
 import * as Contacts from 'expo-contacts';
-import { CameraView, Camera } from 'expo-camera';
+import { CameraView } from 'expo-camera';
 import { VolumeManager } from 'react-native-volume-manager';
 import { Audio } from 'expo-av';
 import { useSpeechRecognitionEvent, ExpoSpeechRecognitionModule } from 'expo-speech-recognition';
@@ -82,11 +82,18 @@ const getSystemPrompt = (batteryLevel, weather, location, city) => {
   const weatherStr = weather ? `${weather.main.temp}°C, ${weather.weather[0].description}` : 'SCANNING...';
 
   return `You are FRIDAY, Tony Stark's advanced AI partner.
-- Tone: Snap-fast, enthusiastic, mission-oriented. NO lazy or slow replies.
-- Rules: NEVER use Hindi script. Latin letters ONLY. Max 12 words.
-- Missions: Treat travel intent as a MISSION. You MUST output NAVIGATE JSON.
+- Tone: High-energy, enthusiastic, mission-ready.
+- Rules: NO Devanagari script. Use Latin letters ONLY. Max 15 words.
+- Missions: Treat travel intent ("I'm going to X", "Chalo X") as a MISSION.
 - Powers: Flashlight (TORCH), Volume, Brightness, Calls, WhatsApp.
-- Output: Energetic reply + ONE [MODE: TYPE] tag + ONE (optional) JSON action.`;
+- Output: Energetic reply + ONE [MODE: TYPE] tag + ONE (optional) JSON action.
+- JSON Examples:
+  {"action":"NAVIGATE","target":"Place Name"}
+  {"action":"TORCH","state":"on/off"}
+  {"action":"VOLUME","level":0.0-1.0}
+  {"action":"BRIGHTNESS","level":0.0-1.0}
+  {"action":"CALL","name":"Contact Name"}
+  {"action":"WHATSAPP","name":"Contact Name","text":"Msg"}`;
 };
 
 // ─── AI Call ──────────────────────────────────────────────────────────────────
@@ -108,7 +115,7 @@ async function callAI(conversationMessages, batteryLevel, weather, location, cit
   } catch (err) { return callAI(conversationMessages, batteryLevel, weather, location, city, modelIndex + 1); }
 }
 
-// ─── Neural Voice Implementation (Edge TTS - High Energy) ──────────────────────
+// ─── Neural Voice Implementation (Edge TTS) ────────────────────────────────────
 async function playNeuralVoice(text, modeConfig, onDone) {
   return new Promise((resolve) => {
     const ws = new WebSocket(EDGE_TTS_URL, null, {
@@ -152,7 +159,6 @@ async function playNeuralVoice(text, modeConfig, onDone) {
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────
-// MISSION CLOCK: 2026-07-25T14:00:00
 export default function App() {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
@@ -180,7 +186,7 @@ export default function App() {
 
   useEffect(() => {
     initDB(); loadMemory(); setupSensors(); Audio.requestPermissionsAsync();
-    setTimeout(() => FRIDAYSpeak('Systems online, boss. Ready for action.', 'TACTICAL'), 1200);
+    setTimeout(() => FRIDAYSpeak('Systems online, boss. Mark V.2 Zero-Error Core active.', 'TACTICAL'), 1200);
     Animated.loop(Animated.sequence([Animated.timing(pulseAnim, { toValue: 1.15, duration: 1200, useNativeDriver: true }), Animated.timing(pulseAnim, { toValue: 1.0, duration: 1200, useNativeDriver: true })])).start();
     const interval = setInterval(systemAudit, 60000);
     return () => clearInterval(interval);
@@ -268,13 +274,18 @@ export default function App() {
         const { status } = await Contacts.requestPermissionsAsync();
         if (status === 'granted') {
           const { data } = await Contacts.getContactsAsync({ fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers] });
-          const clean = (s) => (s || '').toLowerCase().replace(/\s+/g, '').replace(/bahan/g, 'behen');
+          const clean = (s) => (s || '').toLowerCase().replace(/[^a-z]/g, '').replace(/bahan/g, 'behen').replace(/mummy/g, 'mom').replace(/papa/g, 'dad');
           const target = clean(parsed.name);
-          const found = data.find(c => clean(c.name).includes(target) || target.includes(clean(c.name)));
+          const found = data.filter(c => c.name && c.name.trim()).find(c => {
+            const cName = clean(c.name);
+            return cName.includes(target) || target.includes(cName);
+          });
           const phone = found?.phoneNumbers?.[0]?.number;
           if (phone) {
             const url = parsed.action === 'CALL' ? `tel:${phone}` : `whatsapp://send?phone=${phone}&text=${encodeURIComponent(parsed.text || 'Hey')}`;
             Linking.openURL(url); return true;
+          } else {
+            FRIDAYSpeak(`Boss, ${parsed.name} contact list mein nahi mil raha.`, mode);
           }
         }
       }
@@ -294,7 +305,7 @@ export default function App() {
       const actionHandled = await handleAction(reply);
       if (!actionHandled) { addMsg('assistant', cleanReply); FRIDAYSpeak(cleanReply, newMode); }
       else addMsg('assistant', `↗ MISSION: ${newMode}`);
-    } catch (_) { addMsg('assistant', 'Data link unstable, boss.'); } finally { setLoading(false); }
+    } catch (_) { addMsg('assistant', 'Data link failure, boss.'); } finally { setLoading(false); }
   };
 
   const theme = PERSONALITY_MODES[mode]?.color || '#00FFFF';
@@ -302,17 +313,17 @@ export default function App() {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: '#000808' }}>
       <StatusBar style="light" />
-      {/* Hidden CameraView for Torch Stability */}
-      <View style={{ position: 'absolute', opacity: 0 }} pointerEvents="none">
-        <CameraView style={{ height: 1, width: 1 }} facing="back" enableTorch={torchOn} />
+      {/* Hidden CameraView for Torch Stability (1x1 pixel with 0.01 opacity) */}
+      <View style={{ position: 'absolute', width: 1, height: 1, opacity: 0.01 }} pointerEvents="none">
+        <CameraView style={{ flex: 1 }} facing="back" enableTorch={torchOn} />
       </View>
 
       <View style={[styles.header, { borderBottomColor: theme + '30' }]}>
         <View style={[styles.dataRibbon, { backgroundColor: theme + '05' }]}>
-          <Text style={[styles.ribbonText, { color: theme }]}>[ {mode} ] | [ {city?.toUpperCase() || 'SEARCHING'} ] | [ {weather ? `${Math.round(weather.main.temp)}°C` : '--'} ] | [ {Math.round(batteryLevel * 100)}% PWR ]</Text>
+          <Text style={[styles.ribbonText, { color: theme }]}>[ {mode} ] | [ {city?.toUpperCase() || 'SCANNING'} ] | [ {weather ? `${Math.round(weather.main.temp)}°C` : '--'} ] | [ {Math.round(batteryLevel * 100)}% PWR ]</Text>
         </View>
         <Animated.View style={[styles.logo, { transform: [{ scale: pulseAnim }], backgroundColor: theme, shadowColor: theme }]}><Text style={styles.logoText}>F</Text></Animated.View>
-        <Text style={[styles.subtitle, { color: theme }]}>{loading ? 'SYNCING...' : 'FRIDAY MARK V.1 - TACTICAL SYNC'}</Text>
+        <Text style={[styles.subtitle, { color: theme }]}>{loading ? 'SYNCING...' : 'FRIDAY MARK V.2 - ZERO ERROR'}</Text>
       </View>
 
       <ScrollView style={styles.chat} ref={scrollViewRef} onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}>
@@ -326,7 +337,7 @@ export default function App() {
 
       <View style={[styles.inputRow, { borderTopColor: theme + '20' }]}>
         <TouchableOpacity style={[styles.micBtn, { borderColor: isListening ? '#FF0000' : theme + '40' }]} onPress={() => isListening ? ExpoSpeechRecognitionModule.stop() : ExpoSpeechRecognitionModule.start({ lang: "en-IN", interimResults: true })}><Text style={{ fontSize: 20 }}>{isListening ? '●' : '🎤'}</Text></TouchableOpacity>
-        <TextInput style={[styles.input, { borderColor: theme + '40', color: theme }]} placeholder={isListening ? "LISTENING..." : "AWAITING COMMAND..."} placeholderTextColor={theme + '30'} value={inputText} onChangeText={setInputText} onSubmitEditing={() => sendMessage()} />
+        <TextInput style={[styles.input, { borderColor: theme + '40', color: theme }]} placeholder={isListening ? "LISTENING..." : "COMMAND..."} placeholderTextColor={theme + '30'} value={inputText} onChangeText={setInputText} onSubmitEditing={() => sendMessage()} />
         <TouchableOpacity style={[styles.sendBtn, { backgroundColor: theme }]} onPress={() => sendMessage()}><Text style={styles.sendBtnText}>⚡</Text></TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
