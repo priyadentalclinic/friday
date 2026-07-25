@@ -11,7 +11,14 @@
       "permissions": [
         "RECORD_AUDIO",
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "READ_CALENDAR",
+        "WRITE_CALENDAR",
+        "READ_CONTACTS",
+        "WRITE_CONTACTS",
+        "WRITE_SETTINGS",
+        "USE_EXACT_ALARM"
       ],
       "plugins": [
         [
@@ -20,7 +27,12 @@
             "microphonePermission": "Allow FRIDAY to access the microphone for speech recognition.",
             "speechRecognitionPermission": "Allow FRIDAY to use speech recognition."
           }
-        ]
+        ],
+        "expo-camera",
+        "expo-brightness",
+        "expo-calendar",
+        "expo-contacts",
+        "react-native-volume-manager"
       ]
     },
     "extra": {
