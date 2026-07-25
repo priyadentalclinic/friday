@@ -434,7 +434,7 @@ export default function App() {
           </Text>
         </View>
         <Animated.View style={[styles.logo, { transform: [{ scale: pulseAnim }], backgroundColor: theme, shadowColor: theme }]}><Text style={styles.logoText}>F</Text></Animated.View>
-        <Text style={[styles.subtitle, { color: theme }]}>{loading ? 'SYNCING...' : 'FRIDAY SENTINEL PRO - ETERNITY SYNC'}</Text>
+        <Text style={[styles.subtitle, { color: theme }]}>{loading ? 'SYNCING...' : 'FRIDAY MARK V.5 - SENTINEL PRO V1'}</Text>
       </View>
 
       <ScrollView style={styles.chat} ref={scrollViewRef} onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}>
