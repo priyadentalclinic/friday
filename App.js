@@ -12,7 +12,7 @@ import * as Location from 'expo-location';
 import * as Brightness from 'expo-brightness';
 import * as Calendar from 'expo-calendar';
 import * as Contacts from 'expo-contacts';
-import { Camera } from 'expo-camera';
+import { CameraView, Camera } from 'expo-camera';
 import { VolumeManager } from 'react-native-volume-manager';
 import { Audio } from 'expo-av';
 import { useSpeechRecognitionEvent, ExpoSpeechRecognitionModule } from 'expo-speech-recognition';
@@ -33,23 +33,23 @@ const MODEL_CHAIN = [
 
 const PERSONALITY_MODES = {
   TACTICAL: {
-    prompt: 'High-energy tactical Hinglish. MISSION ORIENTED. Short replies. Call user "boss". Output tag [MODE: TACTICAL].',
-    voice: { pitch: '+3Hz', rate: '+15%', style: 'cheerful' },
+    prompt: 'Ultra-high energy tactical Hinglish. MISSION READY. Short replies. Call user "boss". Output tag [MODE: TACTICAL].',
+    voice: { pitch: '+5Hz', rate: '+25%', style: 'cheerful' },
     color: '#00FFFF'
   },
   SARCASTIC: {
-    prompt: 'Witty, judgmental, fast humor. Hinglish. Call user "boss". Output tag [MODE: SARCASTIC].',
-    voice: { pitch: '+0Hz', rate: '+12%', style: 'cheerful' },
+    prompt: 'Witty, judgmental, fast humor. High energy. Call user "boss". Output tag [MODE: SARCASTIC].',
+    voice: { pitch: '+2Hz', rate: '+20%', style: 'cheerful' },
     color: '#FF8C00'
   },
   CONCERNED: {
-    prompt: 'Helpful and high-energy. Focus on safety. Hinglish. Call user "boss". Output tag [MODE: CONCERNED].',
-    voice: { pitch: '+4Hz', rate: '+8%', style: 'cheerful' },
+    prompt: 'Helpful and alert. Energetic care. Call user "boss". Output tag [MODE: CONCERNED].',
+    voice: { pitch: '+6Hz', rate: '+15%', style: 'cheerful' },
     color: '#00FA9A'
   },
   EMERGENCY: {
-    prompt: 'MAX URGENCY. Fast, direct, mission critical. Hinglish. Call user "boss". Output tag [MODE: EMERGENCY].',
-    voice: { pitch: '+6Hz', rate: '+30%', style: 'excited' },
+    prompt: 'MAXIMUM URGENCY. Fast, snappy, direct. MISSION CRITICAL. Call user "boss". Output tag [MODE: EMERGENCY].',
+    voice: { pitch: '+8Hz', rate: '+35%', style: 'excited' },
     color: '#FF0000'
   }
 };
@@ -76,37 +76,17 @@ const toBase64 = (uint8Array) => {
   return output;
 };
 
-// ─── System Master Logic (Phase 5) ───────────────────────────────────────────
-const toggleTorch = async (on) => {
-  try {
-    const { status } = await Camera.requestCameraPermissionsAsync();
-    if (status === 'granted') {
-      // Direct Torch control isn't easily exposed without a view, but we can use a hidden component state
-      // For this build, we set it via a dummy ref in App component.
-      return true;
-    }
-  } catch (_) {} return false;
-};
-
 // ─── Personality & Data Prompting ─────────────────────────────────────────────
 const getSystemPrompt = (batteryLevel, weather, location, city) => {
   const locStr = location ? `${location.coords.latitude.toFixed(3)}, ${location.coords.longitude.toFixed(3)}` : 'UNKNOWN';
   const weatherStr = weather ? `${weather.main.temp}°C, ${weather.weather[0].description}` : 'SCANNING...';
 
   return `You are FRIDAY, Tony Stark's advanced AI partner.
-- Tone: High-energy, enthusiastic, and mission-ready.
-- Rules: NO Devanagari script. Use Latin letters ONLY. Max 15 words.
-- Missions: Treat travel intent ("I'm going to X", "Chalo X") as a MISSION.
-- Hardware Power (Phase 5): You can control the phone's Flashlight, Volume, and Brightness.
-- Command JSON Format:
-  1. {"action":"NAVIGATE","target":"Place Name"}
-  2. {"action":"TORCH","state":"on/off"}
-  3. {"action":"VOLUME","level":0.0-1.0}
-  4. {"action":"BRIGHTNESS","level":0.0-1.0}
-  5. {"action":"CALL","name":"Contact Name"}
-  6. {"action":"WHATSAPP","name":"Contact Name","text":"Msg"}
-- Current Status: Battery ${Math.round(batteryLevel * 100)}% | Weather: ${weatherStr} | Loc: ${city || 'SCANNING'} (${locStr}).
-- Output: Your energetic reply + EXACTLY ONE [MODE: TYPE] tag + (optional) ONE JSON block.`;
+- Tone: Snap-fast, enthusiastic, mission-oriented. NO lazy or slow replies.
+- Rules: NEVER use Hindi script. Latin letters ONLY. Max 12 words.
+- Missions: Treat travel intent as a MISSION. You MUST output NAVIGATE JSON.
+- Powers: Flashlight (TORCH), Volume, Brightness, Calls, WhatsApp.
+- Output: Energetic reply + ONE [MODE: TYPE] tag + ONE (optional) JSON action.`;
 };
 
 // ─── AI Call ──────────────────────────────────────────────────────────────────
@@ -119,7 +99,7 @@ async function callAI(conversationMessages, batteryLevel, weather, location, cit
       body: JSON.stringify({
         model: MODEL_CHAIN[modelIndex],
         messages: [{ role: 'system', content: getSystemPrompt(batteryLevel, weather, location, city) }, ...conversationMessages],
-        max_tokens: 200,
+        max_tokens: 180,
         temperature: 0.8,
       }),
     });
@@ -128,7 +108,7 @@ async function callAI(conversationMessages, batteryLevel, weather, location, cit
   } catch (err) { return callAI(conversationMessages, batteryLevel, weather, location, city, modelIndex + 1); }
 }
 
-// ─── Neural Voice (Edge TTS - Overclocked) ────────────────────────────────────
+// ─── Neural Voice Implementation (Edge TTS - High Energy) ──────────────────────
 async function playNeuralVoice(text, modeConfig, onDone) {
   return new Promise((resolve) => {
     const ws = new WebSocket(EDGE_TTS_URL, null, {
@@ -140,7 +120,7 @@ async function playNeuralVoice(text, modeConfig, onDone) {
     let audioChunks = [];
     ws.onopen = () => {
       const configMsg = `X-Timestamp:${Date.now()}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false","wordBoundaryEnabled":"false"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}`;
-      const ssmlMsg = `X-Timestamp:${Date.now()}\r\nContent-Type:application/ssml+xml\r\nPath:ssml\r\n\r\n<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xmlns:mstts='http://www.w3.org/2001/mstts' xml:lang='en-IN'><voice name='en-IN-NeerjaNeural'><mstts:express-as style='${modeConfig.voice.style}'><prosody pitch='${modeConfig.voice.pitch}' rate='${modeConfig.voice.rate}' volume='+30%'>${text}</prosody></mstts:express-as></voice></speak>`;
+      const ssmlMsg = `X-Timestamp:${Date.now()}\r\nContent-Type:application/ssml+xml\r\nPath:ssml\r\n\r\n<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xmlns:mstts='http://www.w3.org/2001/mstts' xml:lang='en-IN'><voice name='en-IN-NeerjaNeural'><mstts:express-as style='${modeConfig.voice.style}' styledegree='2.0'><prosody pitch='${modeConfig.voice.pitch}' rate='${modeConfig.voice.rate}' volume='+30%'>${text}</prosody></mstts:express-as></voice></speak>`;
       ws.send(configMsg); ws.send(ssmlMsg);
     };
     ws.onmessage = async (event) => {
@@ -172,7 +152,7 @@ async function playNeuralVoice(text, modeConfig, onDone) {
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────
-// MISSION CLOCK: 2026-07-25T13:00:00
+// MISSION CLOCK: 2026-07-25T14:00:00
 export default function App() {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
@@ -200,7 +180,7 @@ export default function App() {
 
   useEffect(() => {
     initDB(); loadMemory(); setupSensors(); Audio.requestPermissionsAsync();
-    setTimeout(() => FRIDAYSpeak('Systems online, boss. Mark V Master Protocol active.', 'TACTICAL'), 1200);
+    setTimeout(() => FRIDAYSpeak('Systems online, boss. Ready for action.', 'TACTICAL'), 1200);
     Animated.loop(Animated.sequence([Animated.timing(pulseAnim, { toValue: 1.15, duration: 1200, useNativeDriver: true }), Animated.timing(pulseAnim, { toValue: 1.0, duration: 1200, useNativeDriver: true })])).start();
     const interval = setInterval(systemAudit, 60000);
     return () => clearInterval(interval);
@@ -233,7 +213,6 @@ export default function App() {
       triggerProactive("Boss, power low hai. Energy conserve karein?", "EMERGENCY");
       proactiveTriggered.current.battery = true;
     }
-    // Calendar Sentinel
     if (!proactiveTriggered.current.schedule) {
       const { status } = await Calendar.requestCalendarPermissionsAsync();
       if (status === 'granted') {
@@ -253,7 +232,7 @@ export default function App() {
   const FRIDAYSpeak = async (text, forcedMode, onDone) => {
     const mConfig = PERSONALITY_MODES[forcedMode || mode] || PERSONALITY_MODES.TACTICAL;
     const success = await playNeuralVoice(text, mConfig, onDone);
-    if (!success) Speech.speak(text, { pitch: 1.2, rate: 1.2, onDone });
+    if (!success) Speech.speak(text, { pitch: 1.3, rate: 1.3, onDone });
   };
 
   const loadMemory = () => { try {
@@ -270,14 +249,14 @@ export default function App() {
       const parsed = JSON.parse(jsonMatch[0]);
       if (parsed.action === 'NAVIGATE') {
         const url = Platform.select({ ios: `maps:0,0?q=${encodeURIComponent(parsed.target)}`, android: `geo:0,0?q=${encodeURIComponent(parsed.target)}` });
-        let briefing = `Target ${parsed.target} locked, boss. Ready?`;
+        let briefing = `Target ${parsed.target} locked, boss. Let's go.`;
         if (location) {
           const dResp = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(parsed.target)}&format=json&limit=1`, { headers: { 'User-Agent': 'FRIDAY-AI/1.0' } });
           const dData = await dResp.json();
           if (dData[0]) {
             const oResp = await fetch(`http://router.project-osrm.org/route/v1/driving/${location.coords.longitude},${location.coords.latitude};${dData[0].lon},${dData[0].lat}?overview=false`);
             const oData = await oResp.json();
-            if (oData.routes[0]) briefing = `${parsed.target} is ${(oData.routes[0].distance/1000).toFixed(1)} km away. ETA ${Math.round(oData.routes[0].duration/60)} minutes. Let's go.`;
+            if (oData.routes[0]) briefing = `${parsed.target} is ${(oData.routes[0].distance/1000).toFixed(1)} km away. ETA ${Math.round(oData.routes[0].duration/60)} mins. Ready?`;
           }
         }
         FRIDAYSpeak(briefing, mode, () => Linking.openURL(url)); return true;
@@ -288,8 +267,11 @@ export default function App() {
       if (parsed.action === 'CALL' || parsed.action === 'WHATSAPP') {
         const { status } = await Contacts.requestPermissionsAsync();
         if (status === 'granted') {
-          const { data } = await Contacts.getContactsAsync({ name: parsed.name, fields: [Contacts.Fields.PhoneNumbers] });
-          const phone = data[0]?.phoneNumbers?.[0]?.number;
+          const { data } = await Contacts.getContactsAsync({ fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers] });
+          const clean = (s) => (s || '').toLowerCase().replace(/\s+/g, '').replace(/bahan/g, 'behen');
+          const target = clean(parsed.name);
+          const found = data.find(c => clean(c.name).includes(target) || target.includes(clean(c.name)));
+          const phone = found?.phoneNumbers?.[0]?.number;
           if (phone) {
             const url = parsed.action === 'CALL' ? `tel:${phone}` : `whatsapp://send?phone=${phone}&text=${encodeURIComponent(parsed.text || 'Hey')}`;
             Linking.openURL(url); return true;
@@ -311,7 +293,7 @@ export default function App() {
       const cleanReply = reply.replace(/\[MODE:\s*\w+\]/gi, '').replace(/\{[\s\S]*\}/, '').trim();
       const actionHandled = await handleAction(reply);
       if (!actionHandled) { addMsg('assistant', cleanReply); FRIDAYSpeak(cleanReply, newMode); }
-      else addMsg('assistant', `↗ EXECUTING: ${newMode}`);
+      else addMsg('assistant', `↗ MISSION: ${newMode}`);
     } catch (_) { addMsg('assistant', 'Data link unstable, boss.'); } finally { setLoading(false); }
   };
 
@@ -320,15 +302,17 @@ export default function App() {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: '#000808' }}>
       <StatusBar style="light" />
-      {/* Hidden Camera for Torch */}
-      {torchOn && <View style={{ position: 'absolute', opacity: 0 }}><Camera style={{ height: 1, width: 1 }} enableTorch={true} /></View>}
+      {/* Hidden CameraView for Torch Stability */}
+      <View style={{ position: 'absolute', opacity: 0 }} pointerEvents="none">
+        <CameraView style={{ height: 1, width: 1 }} facing="back" enableTorch={torchOn} />
+      </View>
 
       <View style={[styles.header, { borderBottomColor: theme + '30' }]}>
         <View style={[styles.dataRibbon, { backgroundColor: theme + '05' }]}>
-          <Text style={[styles.ribbonText, { color: theme }]}>[ {mode} ] | [ {city?.toUpperCase() || 'SCANNING'} ] | [ {weather ? `${Math.round(weather.main.temp)}°C` : '--'} ] | [ {Math.round(batteryLevel * 100)}% PWR ]</Text>
+          <Text style={[styles.ribbonText, { color: theme }]}>[ {mode} ] | [ {city?.toUpperCase() || 'SEARCHING'} ] | [ {weather ? `${Math.round(weather.main.temp)}°C` : '--'} ] | [ {Math.round(batteryLevel * 100)}% PWR ]</Text>
         </View>
         <Animated.View style={[styles.logo, { transform: [{ scale: pulseAnim }], backgroundColor: theme, shadowColor: theme }]}><Text style={styles.logoText}>F</Text></Animated.View>
-        <Text style={[styles.subtitle, { color: theme }]}>{loading ? 'SYNCING...' : 'FRIDAY MARK V - SYSTEM MASTER'}</Text>
+        <Text style={[styles.subtitle, { color: theme }]}>{loading ? 'SYNCING...' : 'FRIDAY MARK V.1 - TACTICAL SYNC'}</Text>
       </View>
 
       <ScrollView style={styles.chat} ref={scrollViewRef} onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}>
