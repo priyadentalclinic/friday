@@ -12,7 +12,7 @@ import * as Location from 'expo-location';
 import * as Brightness from 'expo-brightness';
 import * as Calendar from 'expo-calendar';
 import * as Contacts from 'expo-contacts';
-import { CameraView } from 'expo-camera';
+import { CameraView, Camera } from 'expo-camera';
 import { VolumeManager } from 'react-native-volume-manager';
 import { Audio } from 'expo-av';
 import { useSpeechRecognitionEvent, ExpoSpeechRecognitionModule } from 'expo-speech-recognition';
@@ -96,16 +96,14 @@ const getSystemPrompt = (batteryLevel, weather, location, city) => {
   const weatherStr = weather ? `${weather.main.temp}°C, ${weather.weather[0].description}` : 'SCANNING...';
 
   return `You are FRIDAY, Tony Stark's advanced AI partner.
-- Tone: Snap-fast, enthusiastic, mission-oriented. NO lazy or slow replies.
-- Rules: NEVER use Hindi script. Latin letters ONLY. Max 12 words.
-- Missions: Treat travel intent as a MISSION. You MUST output NAVIGATE JSON.
-- Powers: Flashlight (TORCH), Volume, Brightness, Calls, WhatsApp.
-- Output: Energetic reply + ONE [MODE: TYPE] tag + ONE (optional) JSON action.
-- JSON Examples:
-  {"action":"NAVIGATE","target":"Place Name"}
+- Tone: High-energy, snappy, enthusiastic.
+- Rules: NO Devanagari script. English letters ONLY. Max 12 words.
+- Hardware Power: Torch, Volume, Brightness, Calls, WhatsApp.
+- Status: Battery ${Math.round(batteryLevel * 100)}% | Weather: ${weatherStr} | Loc: ${city || 'SCANNING'} (${locStr}).
+- Action Format: Reply + [MODE: TYPE] + JSON Action.
+  {"action":"NAVIGATE","target":"Destination"}
   {"action":"TORCH","state":"on/off"}
   {"action":"VOLUME","level":0.0-1.0}
-  {"action":"BRIGHTNESS","level":0.0-1.0}
   {"action":"CALL","name":"Contact Name"}
   {"action":"WHATSAPP","name":"Contact Name","text":"Msg"}`;
 };
@@ -129,7 +127,7 @@ async function callAI(conversationMessages, batteryLevel, weather, location, cit
   } catch (err) { return callAI(conversationMessages, batteryLevel, weather, location, city, modelIndex + 1); }
 }
 
-// ─── Neural Voice Implementation (Edge TTS - High Energy) ──────────────────────
+// ─── Neural Voice Implementation (Edge TTS) ────────────────────────────────────
 async function playNeuralVoice(text, modeConfig, onDone) {
   return new Promise((resolve) => {
     const ws = new WebSocket(EDGE_TTS_URL, null, {
@@ -173,7 +171,7 @@ async function playNeuralVoice(text, modeConfig, onDone) {
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────
-// MISSION CLOCK: 2026-07-25T14:45:00
+// MISSION CLOCK: 2026-07-25T15:00:00
 export default function App() {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
@@ -201,7 +199,7 @@ export default function App() {
 
   useEffect(() => {
     initDB(); loadMemory(); setupSensors(); Audio.requestPermissionsAsync();
-    setTimeout(() => FRIDAYSpeak('Systems online, boss. Ready for action.', 'TACTICAL'), 1200);
+    setTimeout(() => FRIDAYSpeak('Systems online, boss. Mark V.3 Ultimate Protocol active.', 'TACTICAL'), 1200);
     Animated.loop(Animated.sequence([Animated.timing(pulseAnim, { toValue: 1.15, duration: 1200, useNativeDriver: true }), Animated.timing(pulseAnim, { toValue: 1.0, duration: 1200, useNativeDriver: true })])).start();
     const interval = setInterval(systemAudit, 60000);
     return () => clearInterval(interval);
@@ -231,7 +229,7 @@ export default function App() {
   const systemAudit = async () => {
     const now = new Date();
     if (batteryLevel > 0 && batteryLevel < 0.20 && !proactiveTriggered.current.battery) {
-      triggerProactive("Boss, power low hai. Energy conserve karein?", "EMERGENCY");
+      triggerProactive("Boss, power low hai. Enery conserve mode?", "EMERGENCY");
       proactiveTriggered.current.battery = true;
     }
     if (!proactiveTriggered.current.schedule) {
@@ -241,7 +239,7 @@ export default function App() {
         const start = new Date(); const end = new Date(now.getTime() + 60 * 60 * 1000);
         const events = await Calendar.getEventsAsync(calendars.map(c => c.id), start, end);
         if (events.length > 0) {
-          triggerProactive(`Boss, mission alert: ${events[0].title} in ${Math.round((new Date(events[0].startDate) - now)/60000)} minutes.`, "TACTICAL");
+          triggerProactive(`Boss, mission alert: ${events[0].title} coming up.`, "TACTICAL");
           proactiveTriggered.current.schedule = true;
         }
       }
@@ -282,17 +280,23 @@ export default function App() {
         }
         FRIDAYSpeak(briefing, mode, () => Linking.openURL(url)); return true;
       }
-      if (parsed.action === 'TORCH') { setTorchOn(parsed.state === 'on'); return true; }
+      if (parsed.action === 'TORCH') {
+        const { status } = await Camera.requestCameraPermissionsAsync();
+        if (status === 'granted') { setTorchOn(parsed.state === 'on'); return true; }
+        else { FRIDAYSpeak("Boss, camera permission nahi hai torch ke liye.", "CONCERNED"); return false; }
+      }
       if (parsed.action === 'VOLUME') { await VolumeManager.setVolume(parsed.level); return true; }
       if (parsed.action === 'BRIGHTNESS') { await Brightness.setBrightnessAsync(parsed.level); return true; }
       if (parsed.action === 'CALL' || parsed.action === 'WHATSAPP') {
         const { status } = await Contacts.requestPermissionsAsync();
         if (status === 'granted') {
           const { data } = await Contacts.getContactsAsync({ fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers] });
-          const candidates = data.filter(c => c.name && c.name.trim()).map(c => ({ ...c, score: getSimilarity(parsed.name, c.name) }));
+          // Named-Only Filter + Score Matching
+          const valid = data.filter(c => c.name && c.name.trim().length > 1);
+          const candidates = valid.map(c => ({ ...c, score: getSimilarity(parsed.name, c.name) }));
           candidates.sort((a, b) => b.score - a.score);
           const bestMatch = candidates[0];
-          if (bestMatch && bestMatch.score > 0.6) {
+          if (bestMatch && bestMatch.score > 0.65) {
             const phone = bestMatch.phoneNumbers?.[0]?.number;
             if (phone) {
               const url = parsed.action === 'CALL' ? `tel:${phone}` : `whatsapp://send?phone=${phone}&text=${encodeURIComponent(parsed.text || 'Hey')}`;
@@ -317,7 +321,7 @@ export default function App() {
       const cleanReply = reply.replace(/\[MODE:\s*\w+\]/gi, '').replace(/\{[\s\S]*\}/, '').trim();
       const actionHandled = await handleAction(reply);
       if (!actionHandled) { addMsg('assistant', cleanReply); FRIDAYSpeak(cleanReply, newMode); }
-      else addMsg('assistant', `↗ MISSION ACTIVE: ${newMode}`);
+      else addMsg('assistant', `↗ MISSION: ${newMode}`);
     } catch (_) { addMsg('assistant', 'Data link unstable, boss.'); } finally { setLoading(false); }
   };
 
@@ -326,8 +330,8 @@ export default function App() {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: '#000808' }}>
       <StatusBar style="light" />
-      {/* Invisible but active CameraView for Torch (2x2 pixel, 0.1 opacity, top level) */}
-      <View style={{ position: 'absolute', width: 2, height: 2, opacity: 0.1, zIndex: 999 }} pointerEvents="none">
+      {/* Invisible but active CameraView for Torch (2x2 pixel, 0.15 opacity, Z-INDEX 999) */}
+      <View style={{ position: 'absolute', width: 2, height: 2, opacity: 0.15, zIndex: 999, top: 0, left: 0 }} pointerEvents="none">
         <CameraView style={{ flex: 1 }} facing="back" enableTorch={torchOn} />
       </View>
 
@@ -350,7 +354,7 @@ export default function App() {
 
       <View style={[styles.inputRow, { borderTopColor: theme + '20' }]}>
         <TouchableOpacity style={[styles.micBtn, { borderColor: isListening ? '#FF0000' : theme + '40' }]} onPress={() => isListening ? ExpoSpeechRecognitionModule.stop() : ExpoSpeechRecognitionModule.start({ lang: "en-IN", interimResults: true })}><Text style={{ fontSize: 20 }}>{isListening ? '●' : '🎤'}</Text></TouchableOpacity>
-        <TextInput style={[styles.input, { borderColor: theme + '40', color: theme }]} placeholder={isListening ? "LISTENING..." : "AWAITING COMMAND..."} placeholderTextColor={theme + '30'} value={inputText} onChangeText={setInputText} onSubmitEditing={() => sendMessage()} />
+        <TextInput style={[styles.input, { borderColor: theme + '40', color: theme }]} placeholder={isListening ? "LISTENING..." : "COMMAND..."} placeholderTextColor={theme + '30'} value={inputText} onChangeText={setInputText} onSubmitEditing={() => sendMessage()} />
         <TouchableOpacity style={[styles.sendBtn, { backgroundColor: theme }]} onPress={() => sendMessage()}><Text style={styles.sendBtnText}>⚡</Text></TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
