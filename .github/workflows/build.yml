@@ -18,7 +18,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Setup Java 17
@@ -27,17 +27,33 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Enable x86_64 emulation
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static binfmt-support
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Create local_models directory
-        run: mkdir -p local_models
+      - name: Create assets directory
+        run: mkdir -p android/app/src/main/assets
 
       - name: Inject Local Brain (Llama 3.2 1B GGUF)
         run: |
           echo "[FRIDAY] Accessing high-speed satellite link for model injection..."
-          curl -L "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf" -o local_models/llama-3.2-1b-instruct-q4_k_m.gguf
-          ls -lh local_models/llama-3.2-1b-instruct-q4_k_m.gguf
+          curl -L "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf" -o android/app/src/main/assets/llama-3.2-1b-instruct-q4_k_m.gguf
+          ls -lh android/app/src/main/assets/llama-3.2-1b-instruct-q4_k_m.gguf
+
+      - name: Cache C++ Build
+        uses: actions/cache@v4
+        with:
+          path: android/app/.cxx
+          key: ${{ runner.os }}-cxx-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-cxx-
 
       - name: Install dependencies
         run: npm install --prefer-offline --legacy-peer-deps
@@ -51,14 +67,6 @@ jobs:
 
       - name: Prebuild Android (Sentinel Pro)
         run: npx expo prebuild --platform android --no-install
-
-      - name: Cache C++ Build
-        uses: actions/cache@v4
-        with:
-          path: android/app/.cxx
-          key: ${{ runner.os }}-cxx-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-cxx-
 
       - name: Build Expo Android Bundle
         run: npx expo export:embed --platform android --dev false --entry-file node_modules/expo/AppEntry.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res
