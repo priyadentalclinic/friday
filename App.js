@@ -62,7 +62,7 @@ const initDB = () => {
   } catch (err) { console.log("[FRIDAY] DB Error:", err.message); }
 };
 
-// ─── Base64 Helper (Safe for Android) ─────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 const toBase64 = (uint8Array) => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
   let binary = '';
@@ -76,15 +76,29 @@ const toBase64 = (uint8Array) => {
   return output;
 };
 
+// Universal Fuzzy Matcher (Dice's Coefficient)
+const getSimilarity = (str1, str2) => {
+  const s1 = (str1 || '').toLowerCase().replace(/[^a-z0-9]/g, '').replace(/bahan/g, 'behen').replace(/mummy/g, 'mom').replace(/papa/g, 'dad');
+  const s2 = (str2 || '').toLowerCase().replace(/[^a-z0-9]/g, '').replace(/bahan/g, 'behen').replace(/mummy/g, 'mom').replace(/papa/g, 'dad');
+  if (s1 === s2) return 1.0;
+  if (s1.length < 2 || s2.length < 2) return 0;
+  const bigrams1 = new Set();
+  for (let i = 0; i < s1.length - 1; i++) bigrams1.add(s1.substring(i, i + 2));
+  const bigrams2 = new Set();
+  for (let i = 0; i < s2.length - 1; i++) bigrams2.add(s2.substring(i, i + 2));
+  const intersect = [...bigrams1].filter(x => bigrams2.has(x)).length;
+  return (2.0 * intersect) / (bigrams1.size + bigrams2.size);
+};
+
 // ─── Personality & Data Prompting ─────────────────────────────────────────────
 const getSystemPrompt = (batteryLevel, weather, location, city) => {
   const locStr = location ? `${location.coords.latitude.toFixed(3)}, ${location.coords.longitude.toFixed(3)}` : 'UNKNOWN';
   const weatherStr = weather ? `${weather.main.temp}°C, ${weather.weather[0].description}` : 'SCANNING...';
 
   return `You are FRIDAY, Tony Stark's advanced AI partner.
-- Tone: High-energy, enthusiastic, mission-ready.
-- Rules: NO Devanagari script. Use Latin letters ONLY. Max 15 words.
-- Missions: Treat travel intent ("I'm going to X", "Chalo X") as a MISSION.
+- Tone: Snap-fast, enthusiastic, mission-oriented. NO lazy or slow replies.
+- Rules: NEVER use Hindi script. Latin letters ONLY. Max 12 words.
+- Missions: Treat travel intent as a MISSION. You MUST output NAVIGATE JSON.
 - Powers: Flashlight (TORCH), Volume, Brightness, Calls, WhatsApp.
 - Output: Energetic reply + ONE [MODE: TYPE] tag + ONE (optional) JSON action.
 - JSON Examples:
@@ -115,7 +129,7 @@ async function callAI(conversationMessages, batteryLevel, weather, location, cit
   } catch (err) { return callAI(conversationMessages, batteryLevel, weather, location, city, modelIndex + 1); }
 }
 
-// ─── Neural Voice Implementation (Edge TTS) ────────────────────────────────────
+// ─── Neural Voice Implementation (Edge TTS - High Energy) ──────────────────────
 async function playNeuralVoice(text, modeConfig, onDone) {
   return new Promise((resolve) => {
     const ws = new WebSocket(EDGE_TTS_URL, null, {
@@ -159,6 +173,7 @@ async function playNeuralVoice(text, modeConfig, onDone) {
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────
+// MISSION CLOCK: 2026-07-25T14:45:00
 export default function App() {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
@@ -186,7 +201,7 @@ export default function App() {
 
   useEffect(() => {
     initDB(); loadMemory(); setupSensors(); Audio.requestPermissionsAsync();
-    setTimeout(() => FRIDAYSpeak('Systems online, boss. Mark V.2 Zero-Error Core active.', 'TACTICAL'), 1200);
+    setTimeout(() => FRIDAYSpeak('Systems online, boss. Ready for action.', 'TACTICAL'), 1200);
     Animated.loop(Animated.sequence([Animated.timing(pulseAnim, { toValue: 1.15, duration: 1200, useNativeDriver: true }), Animated.timing(pulseAnim, { toValue: 1.0, duration: 1200, useNativeDriver: true })])).start();
     const interval = setInterval(systemAudit, 60000);
     return () => clearInterval(interval);
@@ -274,19 +289,17 @@ export default function App() {
         const { status } = await Contacts.requestPermissionsAsync();
         if (status === 'granted') {
           const { data } = await Contacts.getContactsAsync({ fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers] });
-          const clean = (s) => (s || '').toLowerCase().replace(/[^a-z]/g, '').replace(/bahan/g, 'behen').replace(/mummy/g, 'mom').replace(/papa/g, 'dad');
-          const target = clean(parsed.name);
-          const found = data.filter(c => c.name && c.name.trim()).find(c => {
-            const cName = clean(c.name);
-            return cName.includes(target) || target.includes(cName);
-          });
-          const phone = found?.phoneNumbers?.[0]?.number;
-          if (phone) {
-            const url = parsed.action === 'CALL' ? `tel:${phone}` : `whatsapp://send?phone=${phone}&text=${encodeURIComponent(parsed.text || 'Hey')}`;
-            Linking.openURL(url); return true;
-          } else {
-            FRIDAYSpeak(`Boss, ${parsed.name} contact list mein nahi mil raha.`, mode);
+          const candidates = data.filter(c => c.name && c.name.trim()).map(c => ({ ...c, score: getSimilarity(parsed.name, c.name) }));
+          candidates.sort((a, b) => b.score - a.score);
+          const bestMatch = candidates[0];
+          if (bestMatch && bestMatch.score > 0.6) {
+            const phone = bestMatch.phoneNumbers?.[0]?.number;
+            if (phone) {
+              const url = parsed.action === 'CALL' ? `tel:${phone}` : `whatsapp://send?phone=${phone}&text=${encodeURIComponent(parsed.text || 'Hey')}`;
+              Linking.openURL(url); return true;
+            }
           }
+          FRIDAYSpeak(`Boss, ${parsed.name} secure contacts mein nahi mila.`, mode);
         }
       }
     } catch (_) {} return false;
@@ -304,8 +317,8 @@ export default function App() {
       const cleanReply = reply.replace(/\[MODE:\s*\w+\]/gi, '').replace(/\{[\s\S]*\}/, '').trim();
       const actionHandled = await handleAction(reply);
       if (!actionHandled) { addMsg('assistant', cleanReply); FRIDAYSpeak(cleanReply, newMode); }
-      else addMsg('assistant', `↗ MISSION: ${newMode}`);
-    } catch (_) { addMsg('assistant', 'Data link failure, boss.'); } finally { setLoading(false); }
+      else addMsg('assistant', `↗ MISSION ACTIVE: ${newMode}`);
+    } catch (_) { addMsg('assistant', 'Data link unstable, boss.'); } finally { setLoading(false); }
   };
 
   const theme = PERSONALITY_MODES[mode]?.color || '#00FFFF';
@@ -313,8 +326,8 @@ export default function App() {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: '#000808' }}>
       <StatusBar style="light" />
-      {/* Hidden CameraView for Torch Stability (1x1 pixel with 0.01 opacity) */}
-      <View style={{ position: 'absolute', width: 1, height: 1, opacity: 0.01 }} pointerEvents="none">
+      {/* Invisible but active CameraView for Torch (2x2 pixel, 0.1 opacity, top level) */}
+      <View style={{ position: 'absolute', width: 2, height: 2, opacity: 0.1, zIndex: 999 }} pointerEvents="none">
         <CameraView style={{ flex: 1 }} facing="back" enableTorch={torchOn} />
       </View>
 
@@ -323,7 +336,7 @@ export default function App() {
           <Text style={[styles.ribbonText, { color: theme }]}>[ {mode} ] | [ {city?.toUpperCase() || 'SCANNING'} ] | [ {weather ? `${Math.round(weather.main.temp)}°C` : '--'} ] | [ {Math.round(batteryLevel * 100)}% PWR ]</Text>
         </View>
         <Animated.View style={[styles.logo, { transform: [{ scale: pulseAnim }], backgroundColor: theme, shadowColor: theme }]}><Text style={styles.logoText}>F</Text></Animated.View>
-        <Text style={[styles.subtitle, { color: theme }]}>{loading ? 'SYNCING...' : 'FRIDAY MARK V.2 - ZERO ERROR'}</Text>
+        <Text style={[styles.subtitle, { color: theme }]}>{loading ? 'SYNCING...' : 'FRIDAY MARK V.3 - ULTIMATE SYNC'}</Text>
       </View>
 
       <ScrollView style={styles.chat} ref={scrollViewRef} onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}>
@@ -337,7 +350,7 @@ export default function App() {
 
       <View style={[styles.inputRow, { borderTopColor: theme + '20' }]}>
         <TouchableOpacity style={[styles.micBtn, { borderColor: isListening ? '#FF0000' : theme + '40' }]} onPress={() => isListening ? ExpoSpeechRecognitionModule.stop() : ExpoSpeechRecognitionModule.start({ lang: "en-IN", interimResults: true })}><Text style={{ fontSize: 20 }}>{isListening ? '●' : '🎤'}</Text></TouchableOpacity>
-        <TextInput style={[styles.input, { borderColor: theme + '40', color: theme }]} placeholder={isListening ? "LISTENING..." : "COMMAND..."} placeholderTextColor={theme + '30'} value={inputText} onChangeText={setInputText} onSubmitEditing={() => sendMessage()} />
+        <TextInput style={[styles.input, { borderColor: theme + '40', color: theme }]} placeholder={isListening ? "LISTENING..." : "AWAITING COMMAND..."} placeholderTextColor={theme + '30'} value={inputText} onChangeText={setInputText} onSubmitEditing={() => sendMessage()} />
         <TouchableOpacity style={[styles.sendBtn, { backgroundColor: theme }]} onPress={() => sendMessage()}><Text style={styles.sendBtnText}>⚡</Text></TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
