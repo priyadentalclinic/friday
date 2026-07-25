@@ -12,8 +12,9 @@ import * as Location from 'expo-location';
 import * as Brightness from 'expo-brightness';
 import * as Calendar from 'expo-calendar';
 import * as Contacts from 'expo-contacts';
-import { CameraView, Camera } from 'expo-camera';
+import { CameraView } from 'expo-camera';
 import { VolumeManager } from 'react-native-volume-manager';
+import Zeroconf from 'react-native-zeroconf';
 import { Audio } from 'expo-av';
 import { useSpeechRecognitionEvent, ExpoSpeechRecognitionModule } from 'expo-speech-recognition';
 import { StatusBar } from 'expo-status-bar';
@@ -54,6 +55,8 @@ const PERSONALITY_MODES = {
   }
 };
 
+const zeroconf = new Zeroconf();
+
 // ─── Database Setup ──────────────────────────────────────────────────────────
 const db = SQLite.openDatabaseSync('friday_memory.db');
 const initDB = () => {
@@ -76,7 +79,6 @@ const toBase64 = (uint8Array) => {
   return output;
 };
 
-// Universal Fuzzy Matcher (Dice's Coefficient)
 const getSimilarity = (str1, str2) => {
   const s1 = (str1 || '').toLowerCase().replace(/[^a-z0-9]/g, '').replace(/bahan/g, 'behen').replace(/mummy/g, 'mom').replace(/papa/g, 'dad');
   const s2 = (str2 || '').toLowerCase().replace(/[^a-z0-9]/g, '').replace(/bahan/g, 'behen').replace(/mummy/g, 'mom').replace(/papa/g, 'dad');
@@ -98,12 +100,14 @@ const getSystemPrompt = (batteryLevel, weather, location, city) => {
   return `You are FRIDAY, Tony Stark's advanced AI partner.
 - Tone: High-energy, snappy, enthusiastic.
 - Rules: NO Devanagari script. English letters ONLY. Max 12 words.
-- Hardware Power: Torch, Volume, Brightness, Calls, WhatsApp.
+- Sentinel Mode: You can scan the local Wi-Fi for devices (Smart TVs, Printers, etc.).
+- Powers: Torch, Volume, Brightness, Calls, WhatsApp, Network Scan.
 - Status: Battery ${Math.round(batteryLevel * 100)}% | Weather: ${weatherStr} | Loc: ${city || 'SCANNING'} (${locStr}).
 - Action Format: Reply + [MODE: TYPE] + JSON Action.
-  {"action":"NAVIGATE","target":"Destination"}
+  {"action":"NAVIGATE","target":"Place Name"}
   {"action":"TORCH","state":"on/off"}
   {"action":"VOLUME","level":0.0-1.0}
+  {"action":"SCAN_NETWORK"}
   {"action":"CALL","name":"Contact Name"}
   {"action":"WHATSAPP","name":"Contact Name","text":"Msg"}`;
 };
@@ -171,7 +175,7 @@ async function playNeuralVoice(text, modeConfig, onDone) {
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────
-// MISSION CLOCK: 2026-07-25T15:00:00
+// MISSION CLOCK: 2026-07-25T16:15:00
 export default function App() {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
@@ -183,6 +187,8 @@ export default function App() {
   const [mode, setMode] = useState('TACTICAL');
   const [isListening, setIsListening] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
+  const [isCameraReady, setIsCameraReady] = useState(false);
+  const [foundDevices, setFoundDevices] = useState([]);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const scrollViewRef = useRef();
@@ -199,10 +205,16 @@ export default function App() {
 
   useEffect(() => {
     initDB(); loadMemory(); setupSensors(); Audio.requestPermissionsAsync();
-    setTimeout(() => FRIDAYSpeak('Systems online, boss. Mark V.3 Ultimate Protocol active.', 'TACTICAL'), 1200);
+
+    // Sentinel Listener
+    zeroconf.on('found', (name) => {
+      setFoundDevices(prev => [...new Set([...prev, name])]);
+    });
+
+    setTimeout(() => FRIDAYSpeak('Systems online, boss. Sentinel Intelligence active.', 'TACTICAL'), 1500);
     Animated.loop(Animated.sequence([Animated.timing(pulseAnim, { toValue: 1.15, duration: 1200, useNativeDriver: true }), Animated.timing(pulseAnim, { toValue: 1.0, duration: 1200, useNativeDriver: true })])).start();
     const interval = setInterval(systemAudit, 60000);
-    return () => clearInterval(interval);
+    return () => { clearInterval(interval); zeroconf.stop(); zeroconf.removeAllListeners(); };
   }, []);
 
   const setupSensors = async () => {
@@ -229,7 +241,7 @@ export default function App() {
   const systemAudit = async () => {
     const now = new Date();
     if (batteryLevel > 0 && batteryLevel < 0.20 && !proactiveTriggered.current.battery) {
-      triggerProactive("Boss, power low hai. Enery conserve mode?", "EMERGENCY");
+      triggerProactive("Boss, power levels critical. Energy conservation required.", "EMERGENCY");
       proactiveTriggered.current.battery = true;
     }
     if (!proactiveTriggered.current.schedule) {
@@ -239,7 +251,7 @@ export default function App() {
         const start = new Date(); const end = new Date(now.getTime() + 60 * 60 * 1000);
         const events = await Calendar.getEventsAsync(calendars.map(c => c.id), start, end);
         if (events.length > 0) {
-          triggerProactive(`Boss, mission alert: ${events[0].title} coming up.`, "TACTICAL");
+          triggerProactive(`Boss, event alert: ${events[0].title} is upcoming.`, "TACTICAL");
           proactiveTriggered.current.schedule = true;
         }
       }
@@ -268,22 +280,32 @@ export default function App() {
       const parsed = JSON.parse(jsonMatch[0]);
       if (parsed.action === 'NAVIGATE') {
         const url = Platform.select({ ios: `maps:0,0?q=${encodeURIComponent(parsed.target)}`, android: `geo:0,0?q=${encodeURIComponent(parsed.target)}` });
-        let briefing = `Target ${parsed.target} locked, boss. Let's go.`;
+        let briefing = `Plotting route to ${parsed.target}, boss. Let's go.`;
         if (location) {
           const dResp = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(parsed.target)}&format=json&limit=1`, { headers: { 'User-Agent': 'FRIDAY-AI/1.0' } });
           const dData = await dResp.json();
           if (dData[0]) {
             const oResp = await fetch(`http://router.project-osrm.org/route/v1/driving/${location.coords.longitude},${location.coords.latitude};${dData[0].lon},${dData[0].lat}?overview=false`);
             const oData = await oResp.json();
-            if (oData.routes[0]) briefing = `${parsed.target} is ${(oData.routes[0].distance/1000).toFixed(1)} km away. ETA ${Math.round(oData.routes[0].duration/60)} mins. Ready?`;
+            if (oData.routes[0]) briefing = `${parsed.target} is ${(oData.routes[0].distance/1000).toFixed(1)} km away. ETA ${Math.round(oData.routes[0].duration/60)} minutes, boss.`;
           }
         }
         FRIDAYSpeak(briefing, mode, () => Linking.openURL(url)); return true;
       }
       if (parsed.action === 'TORCH') {
-        const { status } = await Camera.requestCameraPermissionsAsync();
-        if (status === 'granted') { setTorchOn(parsed.state === 'on'); return true; }
-        else { FRIDAYSpeak("Boss, camera permission nahi hai torch ke liye.", "CONCERNED"); return false; }
+        if (isCameraReady) { setTorchOn(parsed.state === 'on'); return true; }
+        else { FRIDAYSpeak("Initializing hardware session, boss. Try again in 200ms.", "CONCERNED"); return false; }
+      }
+      if (parsed.action === 'SCAN_NETWORK') {
+        setFoundDevices([]);
+        zeroconf.scan('http', 'tcp', 'local.');
+        FRIDAYSpeak("Scanning local frequencies, boss. Accessing Wi-Fi layers.", "TACTICAL");
+        setTimeout(() => {
+          zeroconf.stop();
+          const list = foundDevices.length > 0 ? foundDevices.join(', ') : "No active devices detected, boss.";
+          triggerProactive(`Scan complete. Found: ${list}`, "TACTICAL");
+        }, 5000);
+        return true;
       }
       if (parsed.action === 'VOLUME') { await VolumeManager.setVolume(parsed.level); return true; }
       if (parsed.action === 'BRIGHTNESS') { await Brightness.setBrightnessAsync(parsed.level); return true; }
@@ -291,19 +313,17 @@ export default function App() {
         const { status } = await Contacts.requestPermissionsAsync();
         if (status === 'granted') {
           const { data } = await Contacts.getContactsAsync({ fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers] });
-          // Named-Only Filter + Score Matching
           const valid = data.filter(c => c.name && c.name.trim().length > 1);
           const candidates = valid.map(c => ({ ...c, score: getSimilarity(parsed.name, c.name) }));
           candidates.sort((a, b) => b.score - a.score);
-          const bestMatch = candidates[0];
-          if (bestMatch && bestMatch.score > 0.65) {
-            const phone = bestMatch.phoneNumbers?.[0]?.number;
+          if (candidates[0] && candidates[0].score > 0.65) {
+            const phone = candidates[0].phoneNumbers?.[0]?.number;
             if (phone) {
               const url = parsed.action === 'CALL' ? `tel:${phone}` : `whatsapp://send?phone=${phone}&text=${encodeURIComponent(parsed.text || 'Hey')}`;
               Linking.openURL(url); return true;
             }
           }
-          FRIDAYSpeak(`Boss, ${parsed.name} secure contacts mein nahi mila.`, mode);
+          FRIDAYSpeak(`Boss, ${parsed.name} contact list mein nahi mil raha.`, mode);
         }
       }
     } catch (_) {} return false;
@@ -330,21 +350,30 @@ export default function App() {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: '#000808' }}>
       <StatusBar style="light" />
-      {/* Invisible but active CameraView for Torch (2x2 pixel, 0.15 opacity, Z-INDEX 999) */}
+
+      {/* Sentinel Hardware Session (2x2 pixel, 0.15 opacity, Top level) */}
       <View style={{ position: 'absolute', width: 2, height: 2, opacity: 0.15, zIndex: 999, top: 0, left: 0 }} pointerEvents="none">
-        <CameraView style={{ flex: 1 }} facing="back" enableTorch={torchOn} />
+        <CameraView
+          style={{ flex: 1 }}
+          facing="back"
+          flash="off"
+          enableTorch={torchOn}
+          onCameraReady={() => setIsCameraReady(true)}
+        />
       </View>
 
       <View style={[styles.header, { borderBottomColor: theme + '30' }]}>
         <View style={[styles.dataRibbon, { backgroundColor: theme + '05' }]}>
-          <Text style={[styles.ribbonText, { color: theme }]}>[ {mode} ] | [ {city?.toUpperCase() || 'SCANNING'} ] | [ {weather ? `${Math.round(weather.main.temp)}°C` : '--'} ] | [ {Math.round(batteryLevel * 100)}% PWR ]</Text>
+          <Text style={[styles.ribbonText, { color: theme }]}>
+            [ {mode} ] | [ {city?.toUpperCase() || 'SCANNING'} ] | [ {weather ? `${Math.round(weather.main.temp)}°C` : '--'} ] | [ {Math.round(batteryLevel * 100)}% PWR ]
+          </Text>
         </View>
         <Animated.View style={[styles.logo, { transform: [{ scale: pulseAnim }], backgroundColor: theme, shadowColor: theme }]}><Text style={styles.logoText}>F</Text></Animated.View>
-        <Text style={[styles.subtitle, { color: theme }]}>{loading ? 'SYNCING...' : 'FRIDAY MARK V.3 - ULTIMATE SYNC'}</Text>
+        <Text style={[styles.subtitle, { color: theme }]}>{loading ? 'SYNCING...' : 'FRIDAY MARK V.4 - SENTINEL'}</Text>
       </View>
 
       <ScrollView style={styles.chat} ref={scrollViewRef} onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}>
-        {messages.length === 0 && <Text style={styles.placeholder}>[ SYSTEMS OPTIMIZED ]</Text>}
+        {messages.length === 0 && <Text style={styles.placeholder}>[ SENTINEL ONLINE ]</Text>}
         {messages.map((msg, i) => (
           <View key={i} style={[styles.bubble, msg.role === 'user' ? styles.userBubble : [styles.aiBubble, { borderLeftColor: theme }]]}>
             <Text style={[styles.bubbleText, msg.role === 'user' ? styles.userText : { color: theme, fontWeight: '700' }]}>{msg.content}</Text>
@@ -354,7 +383,7 @@ export default function App() {
 
       <View style={[styles.inputRow, { borderTopColor: theme + '20' }]}>
         <TouchableOpacity style={[styles.micBtn, { borderColor: isListening ? '#FF0000' : theme + '40' }]} onPress={() => isListening ? ExpoSpeechRecognitionModule.stop() : ExpoSpeechRecognitionModule.start({ lang: "en-IN", interimResults: true })}><Text style={{ fontSize: 20 }}>{isListening ? '●' : '🎤'}</Text></TouchableOpacity>
-        <TextInput style={[styles.input, { borderColor: theme + '40', color: theme }]} placeholder={isListening ? "LISTENING..." : "COMMAND..."} placeholderTextColor={theme + '30'} value={inputText} onChangeText={setInputText} onSubmitEditing={() => sendMessage()} />
+        <TextInput style={[styles.input, { borderColor: theme + '40', color: theme }]} placeholder={isListening ? "LISTENING..." : "AWAITING COMMAND..."} placeholderTextColor={theme + '30'} value={inputText} onChangeText={setInputText} onSubmitEditing={() => sendMessage()} />
         <TouchableOpacity style={[styles.sendBtn, { backgroundColor: theme }]} onPress={() => sendMessage()}><Text style={styles.sendBtnText}>⚡</Text></TouchableOpacity>
       </View>
     </KeyboardAvoidingView>

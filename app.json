@@ -18,7 +18,11 @@
         "READ_CONTACTS",
         "WRITE_CONTACTS",
         "WRITE_SETTINGS",
-        "USE_EXACT_ALARM"
+        "USE_EXACT_ALARM",
+        "NEARBY_WIFI_DEVICES",
+        "ACCESS_WIFI_STATE",
+        "CHANGE_WIFI_MULTICAST_STATE",
+        "ACCESS_NETWORK_STATE"
       ],
       "plugins": [
         [
@@ -32,7 +36,8 @@
         "expo-brightness",
         "expo-calendar",
         "expo-contacts",
-        "react-native-volume-manager"
+        "react-native-volume-manager",
+        "react-native-zeroconf"
       ]
     },
     "extra": {
