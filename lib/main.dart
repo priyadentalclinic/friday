@@ -278,9 +278,9 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
 
   Future<void> _handleComms(String type, String name, String text) async {
     // Correct FlutterContacts v2 API
-    final bool permission = await FlutterContacts.permissions.request();
+    final bool permission = await FlutterContacts.permissions.request(PermissionType.read) == PermissionStatus.granted;
     if (permission) {
-      final contacts = await FlutterContacts.getAll(withProperties: true);
+      final contacts = await FlutterContacts.getAll(properties: {ContactProperty.phone});
       if (contacts.isEmpty) { _fridaySpeak("Boss, contact list empty hai."); return; }
       
       final candidates = contacts.map((c) => {'contact': c, 'score': getSimilarity(name, c.displayName)})
@@ -294,9 +294,12 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
         final phone = contact.phones.isNotEmpty ? contact.phones[0].number.replaceAll(RegExp(r'[^0-9+]'), '') : null;
         if (phone != null) {
           final url = type == 'CALL' ? "tel:$phone" : "whatsapp://send?phone=$phone&text=${Uri.encodeComponent(text)}";
-          if (await canLaunchUrl(Uri.parse(url))) {
+          final uri = Uri.parse(url);
+          if (await canLaunchUrl(uri)) {
             _fridaySpeak("Initiating $type for ${contact.displayName}, boss.");
-            await launchUrl(Uri.parse(url));
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          } else {
+            _fridaySpeak("Boss, I can't launch $type. Is the app installed?");
           }
         }
       } else { _fridaySpeak("Boss, I can't find $name in secure contacts."); }
