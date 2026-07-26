@@ -19,7 +19,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.SecurityUpdateWarning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
@@ -27,6 +30,7 @@ import androidx.compose.ui.draw.*
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -114,7 +118,7 @@ class MainActivity : ComponentActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == 102 && resultCode == RESULT_OK) {
-            val result = data?.getStringArrayListExtra(RecognizerIntent.RESULTS_RECOGNITION)
+            val result = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
             result?.get(0)?.let { viewModel.sendMessage(it, this, tts, fuzzyMatcher, networkForge) }
         }
     }
@@ -319,7 +323,8 @@ fun ChatBubble(msg: Map<String, String>) {
                 width = 1.dp,
                 brush = Brush.horizontalGradient(
                     listOf(if (isUser) Color(0xFF004A4A) else Color(0xFF00FFFF), Color.Transparent)
-                )
+                ),
+                shape = RoundedCornerShape(4.dp)
             )
         ) {
             Text(

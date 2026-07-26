@@ -5,6 +5,7 @@ import android.util.Log
 import com.google.ai.edge.litertlm.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import java.io.File
 
 class LocalBrain(private val context: Context) {
@@ -38,7 +39,7 @@ class LocalBrain(private val context: Context) {
 
     fun generateResponse(prompt: String): Flow<String>? {
         if (!isReady) return null
-        return conversation?.sendMessageAsync(prompt)
+        return conversation?.sendMessageAsync(prompt)?.map { it.text }
     }
 
     fun close() {
