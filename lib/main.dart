@@ -16,10 +16,12 @@ import 'package:battery_plus/battery_plus.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:lan_scanner/lan_scanner.dart';
+import 'package:flutter_contacts/flutter_contacts.dart';
+import 'package:camera/camera.dart';
 import 'edge_tts.dart';
 
 // ─── API Configuration ────────────────────────────────────────────────────────
-const String openRouterApiKey = "sk-or-v1-3004838634731383827363473138382736"; // Replace with your real key
+const String openRouterApiKey = "sk-or-v1-3004838634731383827363473138382736"; // User replace
 const String openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
 const String localModelName = 'llama-3.2-1b-instruct-q4_k_m.gguf';
 
@@ -115,6 +117,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   bool _localBrainReady = false;
   Map<String, dynamic>? _pendingAction;
   final ScrollController _scrollController = ScrollController();
+  CameraController? _cameraController;
 
   @override
   void initState() {
@@ -127,10 +130,9 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _initSystem() async {
-    await [Permission.microphone, Permission.location, Permission.contacts, Permission.notification].request();
+    await [Permission.microphone, Permission.location, Permission.contacts, Permission.notification, Permission.camera].request();
     final b = Battery();
     _batteryLevel = await b.batteryLevel;
-    // Poll battery level every 60 seconds to save energy (Android KB 2026 best practice)
     Timer.periodic(const Duration(seconds: 60), (timer) async {
       final level = await b.batteryLevel;
       if (mounted) setState(() => _batteryLevel = level);
@@ -138,11 +140,24 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     
     _setupLocalLlama();
     _initSTT();
+    _initCamera();
     
     Position pos = await Geolocator.getCurrentPosition();
     setState(() => _city = "GRID: ${pos.latitude.toStringAsFixed(2)}, ${pos.longitude.toStringAsFixed(2)}");
 
-    _fridaySpeak("Iron Core engaged, boss. Systems ready for perimeter audit.", forcedMode: "TACTICAL");
+    _fridaySpeak("Iron Core engaged, boss. Comms and Sentinel systems operational.", forcedMode: "TACTICAL");
+  }
+
+  Future<void> _initCamera() async {
+    try {
+      final cameras = await availableCameras();
+      if (cameras.isNotEmpty) {
+        _cameraController = CameraController(cameras[0], ResolutionPreset.low, enableAudio: false);
+        await _cameraController!.initialize();
+      }
+    } catch (e) {
+      print("[FRIDAY] Camera Error: $e");
+    }
   }
 
   Future<void> _setupLocalLlama() async {
@@ -166,7 +181,6 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   }
 
   void _handleWakeWord() async {
-    // Medium Haptic Pulse
     HapticFeedback.mediumImpact();
     await _fridaySpeak("Yes boss? Systems hot.", forcedMode: "TACTICAL");
     _startListening();
@@ -197,7 +211,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   }
 
   String _getSystemPrompt(String brainType) {
-    return "You are FRIDAY. Persona: Cybersecurity Sentinel & White Hat Hacker. Tone: High-energy, mission-focused. Rules: Latin script ONLY. Max 12 words. Brain: $brainType. Action required for hardware/network missions. Commands: SCAN_NETWORK, TORCH, VOLUME, CALL, AUDIT_IP.";
+    return "You are FRIDAY. Persona: Cybersecurity Sentinel & White Hat Hacker. Tone: High-energy, mission-focused. Rules: Latin script ONLY. Max 12 words. Brain: $brainType. Action required for hardware/network missions. JSON Format: {\"action\":\"TYPE\", \"target\":\"VAL\", \"text\":\"OPTIONAL\"}. Actions: SCAN_NETWORK, TORCH, VOLUME, CALL, WHATSAPP.";
   }
 
   Future<void> _sendMessage(String text) async {
@@ -207,10 +221,11 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       _loading = true;
     });
 
-    if (_pendingAction != null && (text.toLowerCase().contains("yes") || text.toLowerCase().contains("initiate"))) {
+    if (_pendingAction != null && (text.toLowerCase().contains("yes") || text.toLowerCase().contains("initiate") || text.toLowerCase().contains("go"))) {
       final act = _pendingAction!;
       _pendingAction = null;
       _handleHardwareAction(act);
+      setState(() => _loading = false);
       return;
     }
 
@@ -218,7 +233,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     final bool simple = text.length < 25;
 
     if (simple && _localBrainReady) {
-      reply = "Local core analyzing perimeter. No threats detected. [MODE: TACTICAL]";
+      reply = "Local brain analyzing... [MODE: TACTICAL]";
     } else {
       try {
         final response = await http.post(
@@ -227,13 +242,13 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
           body: jsonEncode({
             'model': 'google/gemma-2-9b-it',
             'messages': [{'role': 'system', 'content': _getSystemPrompt("CLOUD")}, {'role': 'user', 'content': text}],
-            'max_tokens:': 100,
+            'max_tokens': 100,
           }),
         );
         final data = jsonDecode(response.body);
         reply = data['choices'][0]['message']['content'];
       } catch (e) {
-        reply = "Encryption link broken, boss. Offline core active. [MODE: EMERGENCY]";
+        reply = "Data link failure, boss. Reverting to local core. [MODE: EMERGENCY]";
       }
     }
 
@@ -261,12 +276,40 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     if (cmd == 'SCAN_NETWORK') {
       _scanNetwork();
     } else if (cmd == 'TORCH') {
-      // Logic for Torch toggle via MethodChannel
+      final state = action['state'] == 'on';
+      if (_cameraController != null) {
+        await _cameraController!.setFlashMode(state ? FlashMode.torch : FlashMode.off);
+        _fridaySpeak("Torch ${state ? 'engaged' : 'dark'}, boss.");
+      }
+    } else if (cmd == 'CALL' || cmd == 'WHATSAPP') {
+      _handleComms(cmd, action['target'], action['text'] ?? "Hey");
+    }
+  }
+
+  Future<void> _handleComms(String type, String name, String text) async {
+    if (await FlutterContacts.requestPermission()) {
+      final contacts = await FlutterContacts.getContacts(withProperties: true);
+      final bestMatch = contacts.map((c) => {'contact': c, 'score': getSimilarity(name, c.displayName)})
+                                 .reduce((a, b) => (a['score'] as double) > (b['score'] as double) ? a : b);
+
+      if ((bestMatch['score'] as double) > 0.6) {
+        final contact = bestMatch['contact'] as Contact;
+        final phone = contact.phones.isNotEmpty ? contact.phones[0].number.replaceAll(RegExp(r'[^0-9+]'), '') : null;
+        if (phone != null) {
+          final url = type == 'CALL' ? "tel:$phone" : "whatsapp://send?phone=$phone&text=${Uri.encodeComponent(text)}";
+          if (await canLaunchUrl(Uri.parse(url))) {
+            _fridaySpeak("Initiating $type for ${contact.displayName}, boss.");
+            await launchUrl(Uri.parse(url));
+          }
+        }
+      } else {
+        _fridaySpeak("Boss, I can't find $name in your secure contacts.");
+      }
     }
   }
 
   Future<void> _scanNetwork() async {
-    _fridaySpeak("Forging into local network, boss. Accessing router logs.", forcedMode: "TACTICAL");
+    _fridaySpeak("Forging into local network, boss. Accessing grids.", forcedMode: "TACTICAL");
     final scanner = LanScanner();
     final info = NetworkInfo();
     final String? ip = await info.getWifiIP();

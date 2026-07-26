@@ -8,8 +8,10 @@
       "version": "1.0.0+1",
       "dependencies": [
         "battery_plus",
+        "camera",
         "cupertino_icons",
         "flutter",
+        "flutter_contacts",
         "flutter_foreground_task",
         "flutter_tts",
         "geolocator",
@@ -58,6 +60,25 @@
         "stream_channel",
         "test_api",
         "vector_math"
+      ]
+    },
+    {
+      "name": "camera",
+      "version": "0.12.0+2",
+      "dependencies": [
+        "camera_android_camerax",
+        "camera_avfoundation",
+        "camera_platform_interface",
+        "camera_web",
+        "flutter",
+        "flutter_plugin_android_lifecycle"
+      ]
+    },
+    {
+      "name": "flutter_contacts",
+      "version": "2.3.0",
+      "dependencies": [
+        "flutter"
       ]
     },
     {
@@ -395,14 +416,6 @@
       "dependencies": []
     },
     {
-      "name": "just_audio_platform_interface",
-      "version": "4.6.0",
-      "dependencies": [
-        "flutter",
-        "plugin_platform_interface"
-      ]
-    },
-    {
       "name": "crypto",
       "version": "3.0.7",
       "dependencies": [
@@ -415,6 +428,40 @@
       "dependencies": [
         "collection",
         "meta"
+      ]
+    },
+    {
+      "name": "rxdart",
+      "version": "0.28.0",
+      "dependencies": []
+    },
+    {
+      "name": "audio_session",
+      "version": "0.2.4",
+      "dependencies": [
+        "flutter",
+        "flutter_web_plugins",
+        "meta",
+        "rxdart"
+      ]
+    },
+    {
+      "name": "just_audio_web",
+      "version": "0.4.16",
+      "dependencies": [
+        "flutter",
+        "flutter_web_plugins",
+        "just_audio_platform_interface",
+        "synchronized",
+        "web"
+      ]
+    },
+    {
+      "name": "just_audio_platform_interface",
+      "version": "4.6.0",
+      "dependencies": [
+        "flutter",
+        "plugin_platform_interface"
       ]
     },
     {
@@ -1202,30 +1249,65 @@
       ]
     },
     {
-      "name": "just_audio_web",
-      "version": "0.4.16",
+      "name": "camera_platform_interface",
+      "version": "2.13.1",
       "dependencies": [
+        "cross_file",
+        "flutter",
+        "plugin_platform_interface",
+        "stream_transform"
+      ]
+    },
+    {
+      "name": "stream_transform",
+      "version": "2.1.1",
+      "dependencies": []
+    },
+    {
+      "name": "camera_avfoundation",
+      "version": "0.10.2",
+      "dependencies": [
+        "camera_platform_interface",
+        "flutter",
+        "stream_transform"
+      ]
+    },
+    {
+      "name": "camera_web",
+      "version": "0.3.5+4",
+      "dependencies": [
+        "camera_platform_interface",
         "flutter",
         "flutter_web_plugins",
-        "just_audio_platform_interface",
-        "synchronized",
+        "stream_transform",
         "web"
       ]
     },
     {
-      "name": "audio_session",
-      "version": "0.2.4",
+      "name": "camera_android_camerax",
+      "version": "0.7.4+2",
       "dependencies": [
+        "async",
+        "camera_platform_interface",
         "flutter",
-        "flutter_web_plugins",
         "meta",
-        "rxdart"
+        "stream_transform"
       ]
     },
     {
-      "name": "rxdart",
-      "version": "0.28.0",
-      "dependencies": []
+      "name": "cross_file",
+      "version": "0.3.5+4",
+      "dependencies": [
+        "meta",
+        "web"
+      ]
+    },
+    {
+      "name": "flutter_plugin_android_lifecycle",
+      "version": "2.0.35",
+      "dependencies": [
+        "flutter"
+      ]
     }
   ],
   "configVersion": 1
