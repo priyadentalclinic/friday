@@ -63,12 +63,14 @@ class MainActivity : FlutterActivity() {
                 val assetName = call.argument<String>("assetName")
                 val targetPath = call.argument<String>("targetPath")
                 if (assetName != null && targetPath != null) {
-                    try {
-                        copyAssetToFile(assetName, targetPath)
-                        result.success(true)
-                    } catch (e: Exception) {
-                        result.error("IO_ERROR", e.message, null)
-                    }
+                    Thread {
+                        try {
+                            copyAssetToFile(assetName, targetPath)
+                            runOnUiThread { result.success(true) }
+                        } catch (e: Exception) {
+                            runOnUiThread { result.error("IO_ERROR", e.message, null) }
+                        }
+                    }.start()
                 } else {
                     result.error("INVALID_ARGS", "Missing assetName or targetPath", null)
                 }

@@ -1,3 +1,7 @@
-- `[ ]` Fix `MainActivity.kt` BroadcastReceiver registration
-- `[ ]` Fix `SentinelService.kt` startForeground call
-- `[ ]` Push changes and verify build
+- `[x]` Fix ANR (Not Responding) and Black Screen
+    - `[x]` Update `MainActivity.kt` to move `copyAssetToFile` to a background thread
+    - `[x]` Update `SentinelService.kt` to use safe notification icon
+- `[x]` Improve Flutter HUD UI
+    - `[x]` Add "Send" button to `lib/main.dart`
+    - `[x]` Improve startup error handling
+- `[ ]` Push to GitHub and Verify

@@ -57,6 +57,15 @@ void main() {
 class FridayApp extends StatelessWidget {
   const FridayApp({super.key});
   @override
+  void dispose() {
+    _pulseController.dispose();
+    _textController.dispose();
+    _scrollController.dispose();
+    _cameraController?.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'FRIDAY MARK VI',
@@ -113,6 +122,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   bool _localBrainReady = false;
   Map<String, dynamic>? _pendingAction;
   final ScrollController _scrollController = ScrollController();
+  final TextEditingController _textController = TextEditingController();
   CameraController? _cameraController;
 
   @override
@@ -126,22 +136,29 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _initSystem() async {
-    await [Permission.microphone, Permission.location, Permission.contacts, Permission.notification, Permission.camera].request();
-    final b = Battery();
-    _batteryLevel = await b.batteryLevel;
-    Timer.periodic(const Duration(seconds: 60), (timer) async {
-      final level = await b.batteryLevel;
-      if (mounted) setState(() => _batteryLevel = level);
-    });
-    
-    await _setupLocalLlama();
-    await _initSTT();
-    await _initCamera();
-    
-    Position pos = await Geolocator.getCurrentPosition();
-    setState(() => _city = "GRID: ${pos.latitude.toStringAsFixed(2)}, ${pos.longitude.toStringAsFixed(2)}");
+    try {
+      await [Permission.microphone, Permission.location, Permission.contacts, Permission.notification, Permission.camera].request();
+      final b = Battery();
+      _batteryLevel = await b.batteryLevel;
+      Timer.periodic(const Duration(seconds: 60), (timer) async {
+        final level = await b.batteryLevel;
+        if (mounted) setState(() => _batteryLevel = level);
+      });
+      
+      await _setupLocalLlama();
+      await _initSTT();
+      await _initCamera();
+      
+      try {
+        Position pos = await Geolocator.getCurrentPosition();
+        setState(() => _city = "GRID: ${pos.latitude.toStringAsFixed(2)}, ${pos.longitude.toStringAsFixed(2)}");
+      } catch (e) { print("[FRIDAY] GPS Error: $e"); }
 
-    _fridaySpeak("Iron Core engaged, boss. Sentinel Slim Protocol active.", forcedMode: "TACTICAL");
+      _fridaySpeak("Iron Core engaged, boss. Sentinel Slim Protocol active.", forcedMode: "TACTICAL");
+    } catch (e) {
+      print("[FRIDAY] Init Error: $e");
+      _fridaySpeak("Systems critical, boss. Some modules offline.");
+    }
   }
 
   Future<void> _initCamera() async {
@@ -210,6 +227,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
 
   Future<void> _sendMessage(String text) async {
     if (text.isEmpty || _loading) return;
+    _textController.clear();
     setState(() {
       _messages.add({"role": "user", "content": text});
       _loading = true;
@@ -335,6 +353,15 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   }
 
   @override
+  void dispose() {
+    _pulseController.dispose();
+    _textController.dispose();
+    _scrollController.dispose();
+    _cameraController?.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final themeColor = personalityModes[_mode]['color'] as Color;
     return Scaffold(
@@ -455,10 +482,15 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
           ),
           Expanded(
             child: TextField(
+              controller: _textController,
               onSubmitted: _sendMessage,
               decoration: InputDecoration(hintText: "COMMAND...", border: InputBorder.none, hintStyle: TextStyle(color: theme.withOpacity(0.3))),
               style: TextStyle(color: theme),
             ),
+          ),
+          IconButton(
+            onPressed: () => _sendMessage(_textController.text),
+            icon: Icon(Icons.send_rounded, color: theme),
           ),
           IconButton(onPressed: _startListening, icon: Icon(Icons.mic, color: _isListening ? Colors.red : theme)),
         ],

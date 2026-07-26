@@ -107,7 +107,7 @@ class SentinelService : Service() {
         val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("FRIDAY Iron Core Active")
             .setContentText("Monitoring local perimeters...")
-            .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
+            .setSmallIcon(com.friday.friday_ai.R.mipmap.ic_launcher)
             .build()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
