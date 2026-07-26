@@ -1,6 +1,7 @@
 package com.friday.friday_ai
 
 import android.content.*
+import android.os.Bundle
 import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
