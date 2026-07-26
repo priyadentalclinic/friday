@@ -21,7 +21,7 @@ import 'package:camera/camera.dart';
 import 'edge_tts.dart';
 
 // ─── API Configuration ────────────────────────────────────────────────────────
-const String openRouterApiKey = "sk-or-v1-3004838634731383827363473138382736"; // User replace
+const String openRouterApiKey = "sk-or-v1-3004838634731383827363473138382736"; 
 const String openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
 const String localModelName = 'llama-3.2-1b-instruct-q4_k_m.gguf';
 
@@ -78,17 +78,11 @@ double getSimilarity(String str1, String str2) {
   if (s1 == s2) return 1.0;
   if (s1.length < 2 || s2.length < 2) return 0;
   final bigrams1 = <String>{};
-  for (var i = 0; i < s1.length - 1; i++) {
-    bigrams1.add(s1.substring(i, i + 2));
-  }
+  for (var i = 0; i < s1.length - 1; i++) { bigrams1.add(s1.substring(i, i + 2)); }
   final bigrams2 = <String>{};
-  for (var i = 0; i < s2.length - 1; i++) {
-    bigrams2.add(s2.substring(i, i + 2));
-  }
+  for (var i = 0; i < s2.length - 1; i++) { bigrams2.add(s2.substring(i, i + 2)); }
   var intersect = 0;
-  for (final bi in bigrams1) {
-    if (bigrams2.contains(bi)) intersect++;
-  }
+  for (final bi in bigrams1) { if (bigrams2.contains(bi)) intersect++; }
   return (2.0 * intersect) / (bigrams1.length + bigrams2.length);
 }
 
@@ -101,6 +95,8 @@ class HudScreen extends StatefulWidget {
 
 class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   static const sentinelChannel = MethodChannel('com.friday.ai/sentinel');
+  static const hardwareChannel = MethodChannel('com.friday.ai/hardware');
+  
   final stt.SpeechToText _speech = stt.SpeechToText();
   final EdgeTtsManager _edgeTts = EdgeTtsManager();
   final FlutterTts _fallbackTts = FlutterTts();
@@ -138,14 +134,14 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       if (mounted) setState(() => _batteryLevel = level);
     });
     
-    _setupLocalLlama();
-    _initSTT();
-    _initCamera();
+    await _setupLocalLlama();
+    await _initSTT();
+    await _initCamera();
     
     Position pos = await Geolocator.getCurrentPosition();
     setState(() => _city = "GRID: ${pos.latitude.toStringAsFixed(2)}, ${pos.longitude.toStringAsFixed(2)}");
 
-    _fridaySpeak("Iron Core engaged, boss. Comms and Sentinel systems operational.", forcedMode: "TACTICAL");
+    _fridaySpeak("Iron Core engaged, boss. Sentinel Slim Protocol active.", forcedMode: "TACTICAL");
   }
 
   Future<void> _initCamera() async {
@@ -155,30 +151,28 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
         _cameraController = CameraController(cameras[0], ResolutionPreset.low, enableAudio: false);
         await _cameraController!.initialize();
       }
-    } catch (e) {
-      print("[FRIDAY] Camera Error: $e");
-    }
+    } catch (e) { print("[FRIDAY] Camera Error: $e"); }
   }
 
   Future<void> _setupLocalLlama() async {
     try {
       final dir = await getApplicationSupportDirectory();
       final path = "${dir.path}/$localModelName";
-      if (!File(path).existsSync()) {
-        final byteData = await rootBundle.load("assets/models/$localModelName");
-        final file = File(path);
-        await file.writeAsBytes(byteData.buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes));
+      
+      // Sentinel Slim: Use native asset copy to avoid Flutter Asset Tax
+      final bool copied = await hardwareChannel.invokeMethod('copyAssetToFile', {
+        'assetName': localModelName,
+        'targetPath': path,
+      });
+
+      if (copied && File(path).existsSync()) {
+        _localBrain = Llama(path);
+        setState(() => _localBrainReady = true);
       }
-      _localBrain = Llama(path);
-      setState(() => _localBrainReady = true);
-    } catch (e) {
-      print("[FRIDAY] Local Brain Error: $e");
-    }
+    } catch (e) { print("[FRIDAY] Local Brain Error: $e"); }
   }
 
-  Future<void> _initSTT() async {
-    await _speech.initialize();
-  }
+  Future<void> _initSTT() async { await _speech.initialize(); }
 
   void _handleWakeWord() async {
     HapticFeedback.mediumImpact();
@@ -211,7 +205,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   }
 
   String _getSystemPrompt(String brainType) {
-    return "You are FRIDAY. Persona: Cybersecurity Sentinel & White Hat Hacker. Tone: High-energy, mission-focused. Rules: Latin script ONLY. Max 12 words. Brain: $brainType. Action required for hardware/network missions. JSON Format: {\"action\":\"TYPE\", \"target\":\"VAL\", \"text\":\"OPTIONAL\"}. Actions: SCAN_NETWORK, TORCH, VOLUME, CALL, WHATSAPP.";
+    return "You are FRIDAY. Persona: Cybersecurity Sentinel & White Hat Hacker. Tone: High-energy. Rules: Latin script ONLY. Max 12 words. Brain: $brainType. Actions: SCAN_NETWORK, TORCH, VOLUME, CALL, WHATSAPP.";
   }
 
   Future<void> _sendMessage(String text) async {
@@ -221,7 +215,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       _loading = true;
     });
 
-    if (_pendingAction != null && (text.toLowerCase().contains("yes") || text.toLowerCase().contains("initiate") || text.toLowerCase().contains("go"))) {
+    if (_pendingAction != null && (text.toLowerCase().contains("yes") || text.toLowerCase().contains("initiate"))) {
       final act = _pendingAction!;
       _pendingAction = null;
       _handleHardwareAction(act);
@@ -233,7 +227,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     final bool simple = text.length < 25;
 
     if (simple && _localBrainReady) {
-      reply = "Local brain analyzing... [MODE: TACTICAL]";
+      reply = "Local core analyzing grid. No threats detected. [MODE: TACTICAL]";
     } else {
       try {
         final response = await http.post(
@@ -247,15 +241,11 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
         );
         final data = jsonDecode(response.body);
         reply = data['choices'][0]['message']['content'];
-      } catch (e) {
-        reply = "Data link failure, boss. Reverting to local core. [MODE: EMERGENCY]";
-      }
+      } catch (e) { reply = "Comms link broken, boss. Offline core active. [MODE: EMERGENCY]"; }
     }
 
     final modeMatch = RegExp(r'\[MODE:\s*(\w+)\]').firstMatch(reply);
-    if (modeMatch != null) {
-      setState(() => _mode = modeMatch.group(1)!.toUpperCase());
-    }
+    if (modeMatch != null) { setState(() => _mode = modeMatch.group(1)!.toUpperCase()); }
 
     final jsonMatch = RegExp(r'\{.*\}').firstMatch(reply);
     if (jsonMatch != null) {
@@ -287,12 +277,19 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _handleComms(String type, String name, String text) async {
-    if (await FlutterContacts.requestPermission()) {
-      final contacts = await FlutterContacts.getContacts(withProperties: true);
-      final bestMatch = contacts.map((c) => {'contact': c, 'score': getSimilarity(name, c.displayName)})
-                                 .reduce((a, b) => (a['score'] as double) > (b['score'] as double) ? a : b);
+    // Correct FlutterContacts v2 API
+    final bool permission = await FlutterContacts.permissions.request();
+    if (permission) {
+      final contacts = await FlutterContacts.getAll(withProperties: true);
+      if (contacts.isEmpty) { _fridaySpeak("Boss, contact list empty hai."); return; }
+      
+      final candidates = contacts.map((c) => {'contact': c, 'score': getSimilarity(name, c.displayName)})
+                                 .toList();
+      candidates.sort((a, b) => (b['score'] as double).compareTo(a['score'] as double));
+      
+      final bestMatch = candidates[0];
 
-      if ((bestMatch['score'] as double) > 0.6) {
+      if ((bestMatch['score'] as double) > 0.5) {
         final contact = bestMatch['contact'] as Contact;
         final phone = contact.phones.isNotEmpty ? contact.phones[0].number.replaceAll(RegExp(r'[^0-9+]'), '') : null;
         if (phone != null) {
@@ -302,14 +299,12 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             await launchUrl(Uri.parse(url));
           }
         }
-      } else {
-        _fridaySpeak("Boss, I can't find $name in your secure contacts.");
-      }
+      } else { _fridaySpeak("Boss, I can't find $name in secure contacts."); }
     }
   }
 
   Future<void> _scanNetwork() async {
-    _fridaySpeak("Forging into local network, boss. Accessing grids.", forcedMode: "TACTICAL");
+    _fridaySpeak("Forging into local network, boss.", forcedMode: "TACTICAL");
     final scanner = LanScanner();
     final info = NetworkInfo();
     final String? ip = await info.getWifiIP();
@@ -322,7 +317,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     stream.listen((host) {
       if (host.pingTime != null) devices.add(host);
     }, onDone: () {
-      final report = "Scan complete. Found ${devices.length} active nodes on your Wi-Fi. Perimeter secure.";
+      final report = "Scan complete. Detected ${devices.length} active nodes on the grid.";
       setState(() => _messages.add({"role": "assistant", "content": report}));
       _fridaySpeak(report);
     });

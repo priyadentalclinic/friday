@@ -1,5 +1,5 @@
 name: friday_ai
-description: "FRIDAY Mark VI - Iron Core"
+description: "FRIDAY Mark VI - Iron Core Sentinel"
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -41,6 +41,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-
-  assets:
-    - assets/models/llama-3.2-1b-instruct-q4_k_m.gguf
+  # Note: Supercomputer brain is injected into native assets via build workflow
+  # and moved to filesystem on first run to save 600MB of APK space.

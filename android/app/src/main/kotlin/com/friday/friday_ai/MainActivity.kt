@@ -5,9 +5,11 @@ import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.*
 
 class MainActivity : FlutterActivity() {
-    private val CHANNEL = "com.friday.ai/sentinel"
+    private val CHANNEL_SENTINEL = "com.friday.ai/sentinel"
+    private val CHANNEL_HARDWARE = "com.friday.ai/hardware"
     private var methodChannel: MethodChannel? = null
 
     private val wakeReceiver = object : BroadcastReceiver() {
@@ -28,7 +30,9 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
+        
+        // Sentinel Channel
+        methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL_SENTINEL)
         methodChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
                 "startSentinel" -> {
@@ -47,5 +51,41 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        // Hardware Channel (The Sentinel Slim Tools)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL_HARDWARE).setMethodCallHandler { call, result ->
+            if (call.method == "copyAssetToFile") {
+                val assetName = call.argument<String>("assetName")
+                val targetPath = call.argument<String>("targetPath")
+                if (assetName != null && targetPath != null) {
+                    try {
+                        copyAssetToFile(assetName, targetPath)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("IO_ERROR", e.message, null)
+                    }
+                } else {
+                    result.error("INVALID_ARGS", "Missing assetName or targetPath", null)
+                }
+            } else {
+                result.notImplemented()
+            }
+        }
+    }
+
+    private fun copyAssetToFile(assetName: String, targetPath: String) {
+        val targetFile = File(targetPath)
+        if (targetFile.exists()) return
+
+        val inputStream = assets.open(assetName)
+        val outputStream = FileOutputStream(targetFile)
+        val buffer = ByteArray(8192)
+        var length: Int
+        while (inputStream.read(buffer).also { length = it } > 0) {
+            outputStream.write(buffer, 0, length)
+        }
+        outputStream.flush()
+        outputStream.close()
+        inputStream.close()
     }
 }
