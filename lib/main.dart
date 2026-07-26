@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:permission_handler/permission_handler.dart' hide PermissionStatus;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:network_info_plus/network_info_plus.dart';
@@ -283,7 +283,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       final contacts = await FlutterContacts.getAll(properties: {ContactProperty.phone});
       if (contacts.isEmpty) { _fridaySpeak("Boss, contact list empty hai."); return; }
       
-      final candidates = contacts.map((c) => {'contact': c, 'score': getSimilarity(name, c.displayName)})
+      final candidates = contacts.map((c) => {'contact': c, 'score': getSimilarity(name, c.displayName ?? "")})
                                  .toList();
       candidates.sort((a, b) => (b['score'] as double).compareTo(a['score'] as double));
       
