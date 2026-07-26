@@ -1,19 +1,18 @@
-# Implementation Tasks - FRIDAY Mark V.5 Optimization
+# Implementation Tasks - Iron Core Overhaul (Mark V.5.1)
 
-- [ ] `[/]` Create Background Service Plugin
-    - [ ] [NEW] `plugins/withBackgroundService.js`
-    - [ ] [MODIFY] `app.json`
-- [ ] `[ ]` Core Logic Overhaul (App.js)
-    - [ ] Define `FAST_ACTIONS` and `SENSITIVE_ACTIONS`
-    - [ ] Implement `getFastAction` (Regex engine)
-    - [ ] Update `handleAction` (Skip confirmation for non-risky tasks)
-    - [ ] Refine `CALL` logic (Better fuzzy matching)
-    - [ ] Implement `WHATSAPP` logic
-    - [ ] Update `sendMessage` (Integrate Fast-Response)
-- [ ] `[ ]` Stability & Crash Fixes
-    - [ ] Refactor `sentinelTask` loop
-    - [ ] Add error boundaries to Sentinel toggle
-- [ ] `[ ]` Verification & Cleanup
-    - [ ] Verify "Torch" latency
-    - [ ] Verify "Call" accuracy
-    - [ ] Verify Sentinel button stability
+- [ ] `[/]` Core Application Overhaul (App.js)
+    - [ ] [MODIFY] Implement synchronous "Iron Core" Interceptor
+    - [ ] [MODIFY] Refactor Hardware Handlers (Torch, Vol, Brightness)
+    - [ ] [MODIFY] Implement "Guardian Protocol" (Auto-Sentinel on launch)
+    - [ ] [MODIFY] Fix CameraView / Torch resource conflict
+    - [ ] [MODIFY] Enhanced Network Scanner (Accurate Subnet Audit)
+    - [ ] [MODIFY] Tighten Comms matching & WhatsApp support
+- [ ] `[ ]` Stability & Permission Audit
+    - [ ] [MODIFY] `app.json` (Verify background permissions)
+- [ ] `[ ]` GitHub Push & Automation
+    - [ ] [SHELL] Commit and push to `master`
+    - [ ] [SHELL] Verify GitHub Action trigger
+- [ ] `[ ]` Verification
+    - [ ] Test Always-On Wake Word
+    - [ ] Test Zero-Latency Torch
+    - [ ] Test Stable Sentinel (No Crash)

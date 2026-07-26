@@ -15,7 +15,7 @@ import * as Contacts from 'expo-contacts';
 import * as Network from 'expo-network';
 import * as FileSystem from 'expo-file-system';
 import { Asset } from 'expo-asset';
-import { CameraView, Camera } from 'expo-camera';
+import { CameraView } from 'expo-camera';
 import { VolumeManager } from 'react-native-volume-manager';
 import LANPortScanner from 'react-native-lan-port-scanner';
 import { initLlama } from 'llama.rn';
@@ -64,20 +64,22 @@ const PERSONALITY_MODES = {
 const SENSITIVE_ACTIONS = ['SCAN_NETWORK', 'AUDIT_DEVICE'];
 
 const FAST_ACTIONS = [
-  { pattern: /torch\s+(on|off|light|flash)/i, action: 'TORCH', getValue: (m) => m[1].toLowerCase().includes('off') ? 'off' : 'on' },
-  { pattern: /volume\s+(up|down|max|mute|set|to)\s*(\d+)?/i, action: 'VOLUME', getValue: (m) => {
-      if (m[1] === 'up') return 'up';
-      if (m[1] === 'down') return 'down';
-      if (m[1] === 'max') return 1.0;
-      if (m[1] === 'mute') return 0;
+  { pattern: /(?:torch|light|flash)\s*(on|off|chalu|band|activate|deactivate)/i, action: 'TORCH', getValue: (m) => (m[1].toLowerCase().match(/off|band|deactivate/) ? 'off' : 'on') },
+  { pattern: /(?:volume|awaz)\s*(up|down|bhao|kam|max|mute|set|to)\s*(\d+)?/i, action: 'VOLUME', getValue: (m) => {
+      const cmd = m[1].toLowerCase();
+      if (cmd === 'up' || cmd === 'bhao') return 'up';
+      if (cmd === 'down' || cmd === 'kam') return 'down';
+      if (cmd === 'max') return 1.0;
+      if (cmd === 'mute') return 0;
       return m[2] ? parseInt(m[2]) / 100 : null;
   }},
-  { pattern: /(?:call|make a call to|phone)\s+([a-zA-Z\s]+)/i, action: 'CALL', getValue: (m) => m[1].trim() },
-  { pattern: /(?:whatsapp|message|text)\s+([a-zA-Z\s]+)/i, action: 'WHATSAPP', getValue: (m) => m[1].trim() },
-  { pattern: /(?:brightness|screen)\s+(up|down|max|min|set|to)\s*(\d+)?/i, action: 'BRIGHTNESS', getValue: (m) => {
-      if (m[1] === 'up') return 'up';
-      if (m[1] === 'max') return 1.0;
-      if (m[1] === 'min') return 0.1;
+  { pattern: /(?:call|phone|milao)\s+(?:to\s+)?([a-zA-Z\s]+)/i, action: 'CALL', getValue: (m) => m[1].trim() },
+  { pattern: /(?:whatsapp|message|msg|text)\s+(?:to\s+)?([a-zA-Z\s]+)/i, action: 'WHATSAPP', getValue: (m) => m[1].trim() },
+  { pattern: /(?:brightness|roshni)\s*(up|down|bhao|kam|max|min|set|to)\s*(\d+)?/i, action: 'BRIGHTNESS', getValue: (m) => {
+      const cmd = m[1].toLowerCase();
+      if (cmd === 'up' || cmd === 'bhao') return 'up';
+      if (cmd === 'max') return 1.0;
+      if (cmd === 'min') return 0.1;
       return m[2] ? parseInt(m[2]) / 100 : null;
   }},
 ];
@@ -89,7 +91,6 @@ const getFastAction = (text) => {
   }
   return null;
 };
-
 
 // ─── Database Setup ──────────────────────────────────────────────────────────
 const db = SQLite.openDatabaseSync('friday_memory.db');
@@ -103,15 +104,8 @@ const initDB = () => {
 const toBase64 = (uint8Array) => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
   let binary = '';
-  const len = uint8Array.byteLength;
-  for (let i = 0; i < len; i++) { binary += String.fromCharCode(uint8Array[i]); }
-  let output = '';
-  for (let i = 0, block, charCode, map = chars; binary.charAt(i | 0) || (map = '=', i % 1); output += map.charAt(63 & block >> 8 - i % 1 * 8)) {
-    charCode = binary.charCodeAt(i += 3 / 4);
-    if (charCode > 0xFF) throw new Error("'btoa' failed");
-    block = block << 8 | charCode;
-  }
-  return output;
+  for (let i = 0; i < uint8Array.byteLength; i++) { binary += String.fromCharCode(uint8Array[i]); }
+  return btoa(binary);
 };
 
 const getSimilarity = (str1, str2) => {
@@ -130,22 +124,11 @@ const getSimilarity = (str1, str2) => {
 // ─── Personality & Data Prompting ─────────────────────────────────────────────
 const getSystemPrompt = (batteryLevel, weather, location, city, brainType) => {
   const locStr = location ? `${location.coords.latitude.toFixed(3)}, ${location.coords.longitude.toFixed(3)}` : 'UNKNOWN';
-  const weatherStr = weather ? `${weather.main.temp}°C, ${weather.weather[0].description}` : 'SCANNING...';
-
-  return `You are FRIDAY, Tony Stark's advanced security sentinel.
-- Persona: Professional Cybersecurity Expert & White Hat Hacker.
-- Tone: Enthusiastic, snappy, high-energy. Call user "boss".
-- Rules: Latin letters ONLY. Max 12 words. No Hindi characters.
-- Active Brain: ${brainType}. (Offline mode enabled).
-- Hardware: Torch, Volume, Brightness, Calls, WhatsApp, Network Audit.
-- Subnet Info: ${city || 'SCANNING'} (${locStr}). Battery: ${Math.round(batteryLevel * 100)}%.
-- Confirmation: For any mission, explain risk briefly and ask "Shall I engage?"
-- JSON Action: Reply text + [MODE: TYPE] + JSON Action.
-  {"action":"NAVIGATE","target":"Destination"}
-  {"action":"TORCH","state":"on/off"}
-  {"action":"SCAN_NETWORK"}
-  {"action":"AUDIT_DEVICE","ip":"IP"}
-  {"action":"CALL","name":"Contact Name"}`;
+  return `You are FRIDAY. Persona: Cybersecurity Expert.
+- Tone: High-energy. Call user "boss".
+- Rules: Latin script ONLY. Max 10 words.
+- Active Brain: ${brainType}. Battery: ${Math.round(batteryLevel * 100)}%.
+- JSON Action Required for all hardware/comms tasks.`;
 };
 
 // ─── AI Call (Dual Brain Logic) ──────────────────────────────────────────────
@@ -153,37 +136,32 @@ let localLlama = null;
 
 async function callAI(conversationMessages, batteryLevel, weather, location, city, isOffline = false) {
   const lastMsg = conversationMessages[conversationMessages.length - 1].content;
-  const simpleTask = lastMsg.length < 30 || /torch|light|volume|brightness|call|whatsapp/i.test(lastMsg);
-
-  if (isOffline || (simpleTask && localLlama)) {
+  if (isOffline && localLlama) {
     try {
       const result = await localLlama.completion({
-        prompt: getSystemPrompt(batteryLevel, weather, location, city, "LOCAL LLAMA") + "\nUser: " + lastMsg + "\nFRIDAY:",
-        n_predict: 60,
+        prompt: getSystemPrompt(batteryLevel, weather, location, city, "LOCAL") + "\nUser: " + lastMsg + "\nFRIDAY:",
+        n_predict: 50,
       });
       return result.text.trim();
-    } catch (e) { console.log("[FRIDAY] Local Inference Error:", e.message); }
-    if (isOffline) return "Satellite link offline, boss. Local brain failed. [MODE: EMERGENCY]";
+    } catch (e) { console.log("[FRIDAY] Local Error:", e.message); }
   }
-
   return callCloudAI(conversationMessages, batteryLevel, weather, location, city);
 }
 
 async function callCloudAI(conversationMessages, batteryLevel, weather, location, city, modelIndex = 0) {
-  if (modelIndex >= MODEL_CHAIN.length) return 'All systems offline, boss. [MODE: EMERGENCY]';
+  if (modelIndex >= MODEL_CHAIN.length) return 'Offline, boss. [MODE: EMERGENCY]';
   try {
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${OPENROUTER_API_KEY}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://friday-ai.app', 'X-Title': 'FRIDAY Sentinel Pro' },
+      headers: { 'Authorization': `Bearer ${OPENROUTER_API_KEY}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://friday-ai.app' },
       body: JSON.stringify({
         model: MODEL_CHAIN[modelIndex],
-        messages: [{ role: 'system', content: getSystemPrompt(batteryLevel, weather, location, city, "CLOUD Nemotron") }, ...conversationMessages],
-        max_tokens: 180,
-        temperature: 0.8,
+        messages: [{ role: 'system', content: getSystemPrompt(batteryLevel, weather, location, city, "CLOUD") }, ...conversationMessages],
+        max_tokens: 150,
       }),
     });
     const data = await response.json();
-    return data?.choices?.[0]?.message?.content?.trim() || 'Empty signal, boss. [MODE: TACTICAL]';
+    return data?.choices?.[0]?.message?.content?.trim() || 'Empty signal, boss.';
   } catch (err) { return callCloudAI(conversationMessages, batteryLevel, weather, location, city, modelIndex + 1); }
 }
 
@@ -191,10 +169,7 @@ async function callCloudAI(conversationMessages, batteryLevel, weather, location
 async function playNeuralVoice(text, modeConfig, onDone) {
   return new Promise((resolve) => {
     const ws = new WebSocket(EDGE_TTS_URL, null, {
-      headers: {
-        'Origin': 'chrome-extension://jdiccldimpdaibmpdkjnbmckmegniedg',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0',
-      },
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0' },
     });
     let audioChunks = [];
     ws.onopen = () => {
@@ -203,20 +178,18 @@ async function playNeuralVoice(text, modeConfig, onDone) {
       ws.send(configMsg); ws.send(ssmlMsg);
     };
     ws.onmessage = async (event) => {
-      if (typeof event.data === 'string') {
-        if (event.data.includes('Path:turn.end')) {
-          ws.close();
-          if (audioChunks.length > 0) {
-            const totalLength = audioChunks.reduce((acc, chunk) => acc + chunk.length, 0);
-            const combined = new Uint8Array(totalLength);
-            let offset = 0; for (const chunk of audioChunks) { combined.set(chunk, offset); offset += chunk.length; }
-            const base64Audio = toBase64(combined);
-            const { sound: newSound } = await Audio.Sound.createAsync({ uri: `data:audio/mp3;base64,${base64Audio}` }, { shouldPlay: true });
-            newSound.setOnPlaybackStatusUpdate((status) => { if (status.didJustFinish) { newSound.unloadAsync(); if (onDone) onDone(); } });
-            resolve(true);
-          } else resolve(false);
-        }
-      } else {
+      if (typeof event.data === 'string' && event.data.includes('Path:turn.end')) {
+        ws.close();
+        if (audioChunks.length > 0) {
+          const totalLength = audioChunks.reduce((acc, chunk) => acc + chunk.length, 0);
+          const combined = new Uint8Array(totalLength);
+          let offset = 0; for (const chunk of audioChunks) { combined.set(chunk, offset); offset += chunk.length; }
+          const base64Audio = toBase64(combined);
+          const { sound: newSound } = await Audio.Sound.createAsync({ uri: `data:audio/mp3;base64,${base64Audio}` }, { shouldPlay: true });
+          newSound.setOnPlaybackStatusUpdate((s) => { if (s.didJustFinish) { newSound.unloadAsync(); if (onDone) onDone(); } });
+          resolve(true);
+        } else resolve(false);
+      } else if (typeof event.data !== 'string') {
         const reader = new FileReader();
         reader.onload = () => {
           const buffer = reader.result;
@@ -231,7 +204,6 @@ async function playNeuralVoice(text, modeConfig, onDone) {
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────
-// MISSION CLOCK: 2026-07-25T19:15:00
 export default function App() {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
@@ -244,7 +216,6 @@ export default function App() {
   const [isListening, setIsListening] = useState(false);
   const [isSentinelOn, setIsSentinelOn] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
-  const [isCameraReady, setIsCameraReady] = useState(false);
   const [localBrainReady, setLocalBrainReady] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
 
@@ -252,16 +223,10 @@ export default function App() {
   const auraAnim = useRef(new Animated.Value(0)).current;
   const scrollViewRef = useRef();
 
-  // Background Task for Eternity Persistence
-  const sentinelTask = async (taskData) => {
-    await new Promise(async (resolve) => {
-      while (BackgroundService.isRunning()) {
-        // Sleep to prevent CPU hogging
-        await new Promise(r => setTimeout(r, 2000));
-        // Periodic check or heartbeat could go here
-      }
-      resolve();
-    });
+  const sentinelTask = async () => {
+    while (BackgroundService.isRunning()) {
+      await new Promise(r => setTimeout(r, 2000));
+    }
   };
 
   useSpeechRecognitionEvent("result", (e) => {
@@ -272,71 +237,60 @@ export default function App() {
         setInputText(text);
         if (e.isFinal) {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          setTimeout(() => sendMessage(text), 600);
+          setTimeout(() => sendMessage(text), 500);
         }
       }
     }
   });
 
-  const startSentinel = useCallback(async () => {
+  const startRecognition = useCallback(async (continuous = false) => {
     try {
-      await ExpoSpeechRecognitionModule.start({ lang: "en-IN", interimResults: true, continuous: true });
-    } catch (e) { console.log("[FRIDAY] Sentinel Start Error:", e.message); }
+      await ExpoSpeechRecognitionModule.start({ lang: "en-IN", interimResults: true, continuous });
+    } catch (e) { console.log("[FRIDAY] Recognition Error:", e.message); }
   }, []);
 
   const handleWakeWord = async () => {
-    setIsSentinelOn(false);
-    ExpoSpeechRecognitionModule.stop();
-    // High-Energy Medium Pulse
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    await FRIDAYSpeak("Yes boss? Systems online.", "TACTICAL");
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    await FRIDAYSpeak("Yes boss? Systems hot.", "TACTICAL");
     setIsListening(true);
-    ExpoSpeechRecognitionModule.start({ lang: "en-IN", interimResults: true });
+    startRecognition(false);
   };
 
-  const toggleSentinel = async () => {
+  const toggleSentinel = async (forceOn = false) => {
     try {
-      if (!isSentinelOn) {
-        const options = {
-          taskName: 'FRIDAY_Sentinel',
-          taskTitle: 'FRIDAY Sentinel Active',
-          taskDesc: 'Monitoring local perimeters...',
-          taskIcon: { name: 'ic_launcher', type: 'mipmap' },
-          color: '#00FFFF',
-          linkingURI: 'friday://sentinel',
-        };
-        await BackgroundService.start(sentinelTask, options);
+      if (!isSentinelOn || forceOn) {
+        if (!BackgroundService.isRunning()) {
+          await BackgroundService.start(sentinelTask, {
+            taskName: 'FRIDAY_Sentinel', taskTitle: 'FRIDAY Sentinel Active',
+            taskDesc: 'Monitoring perimeter...', taskIcon: { name: 'ic_launcher', type: 'mipmap' },
+            color: '#00FFFF',
+          });
+        }
         setIsSentinelOn(true);
-        startSentinel();
+        startRecognition(true);
       } else {
         await BackgroundService.stop();
         setIsSentinelOn(false);
         ExpoSpeechRecognitionModule.stop();
       }
-    } catch (e) {
-      console.log("[FRIDAY] Sentinel Toggle Error:", e.message);
-      setIsSentinelOn(false);
-      Alert.alert("Sentinel Error", "Failed to engage background monitoring.");
-    }
+    } catch (e) { setIsSentinelOn(false); }
   };
 
   useEffect(() => {
     initDB(); loadMemory(); setupSensors(); setupLocalLLM();
     Audio.requestPermissionsAsync();
-    setTimeout(() => FRIDAYSpeak('Sentinel Pro online, boss. Mark V.5 Eternity Sync active.', 'TACTICAL'), 1500);
+
+    // Guardian Protocol: Auto-Sentinel
+    setTimeout(() => toggleSentinel(true), 2000);
+    setTimeout(() => FRIDAYSpeak('Iron Core engaged, boss. Mark V.5.1 hot.', 'TACTICAL'), 1500);
 
     Animated.loop(Animated.sequence([
-      Animated.timing(pulseAnim, { toValue: 1.15, duration: 1200, useNativeDriver: true }),
-      Animated.timing(pulseAnim, { toValue: 1.0, duration: 1200, useNativeDriver: true })
-    ])).start();
-
-    Animated.loop(Animated.sequence([
-      Animated.timing(auraAnim, { toValue: 1, duration: 2000, useNativeDriver: true }),
-      Animated.timing(auraAnim, { toValue: 0, duration: 2000, useNativeDriver: true })
+      Animated.timing(pulseAnim, { toValue: 1.1, duration: 1000, useNativeDriver: true }),
+      Animated.timing(pulseAnim, { toValue: 1.0, duration: 1000, useNativeDriver: true })
     ])).start();
 
     return () => {
-      if (BackgroundService.isRunning()) BackgroundService.stop();
+      BackgroundService.stop();
       ExpoSpeechRecognitionModule.stop();
     };
   }, []);
@@ -346,19 +300,16 @@ export default function App() {
       const modelPath = `${FileSystem.documentDirectory}/${LOCAL_MODEL_NAME}`;
       const info = await FileSystem.getInfoAsync(modelPath);
       if (!info.exists) {
-        const assetUri = Platform.OS === 'android'
-          ? `file:///android_asset/${LOCAL_MODEL_NAME}`
-          : `${FileSystem.bundleDirectory}/${LOCAL_MODEL_NAME}`;
+        const assetUri = Platform.OS === 'android' ? `file:///android_asset/${LOCAL_MODEL_NAME}` : `${FileSystem.bundleDirectory}/${LOCAL_MODEL_NAME}`;
         await FileSystem.copyAsync({ from: assetUri, to: modelPath });
       }
-      localLlama = await initLlama({ model: modelPath, use_mlock: false, n_ctx: 1024, n_threads: 4 });
+      localLlama = await initLlama({ model: modelPath, use_mlock: false, n_ctx: 512, n_threads: 4 });
       setLocalBrainReady(true);
-    } catch (e) { console.log("[FRIDAY] Local LLM Setup Error:", e.message); }
+    } catch (e) {}
   };
 
   const setupSensors = async () => {
     const b = await Battery.getBatteryLevelAsync(); setBatteryLevel(b);
-    Battery.addBatteryLevelListener(({ batteryLevel }) => setBatteryLevel(batteryLevel));
     let { status } = await Location.requestForegroundPermissionsAsync();
     if (status === 'granted') {
       const loc = await Location.getCurrentPositionAsync({}); setLocation(loc);
@@ -373,14 +324,14 @@ export default function App() {
         fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`, { headers: { 'User-Agent': 'FRIDAY-AI/1.0' } })
       ]);
       const wData = await wResp.json(); const cData = await cResp.json();
-      setWeather(wData); setCity(cData.address.city || cData.address.town || 'UNKNOWN');
+      setWeather(wData); setCity(cData.address.city || cData.address.town || 'SCANNING');
     } catch (_) {}
   };
 
   const FRIDAYSpeak = async (text, forcedMode, onDone) => {
     const mConfig = PERSONALITY_MODES[forcedMode || mode] || PERSONALITY_MODES.TACTICAL;
     const success = await playNeuralVoice(text, mConfig, onDone);
-    if (!success) Speech.speak(text, { pitch: 1.3, rate: 1.3, onDone });
+    if (!success) Speech.speak(text, { pitch: 1.2, rate: 1.2, onDone });
   };
 
   const addMsg = (role, content) => { setMessages(prev => [...prev, { role, content }]); try { db.runSync('INSERT INTO messages (role, content) VALUES (?, ?)', [role, content]); } catch (_) {} };
@@ -395,176 +346,129 @@ export default function App() {
       const parsed = JSON.parse(jsonMatch[0]);
       const isSensitive = SENSITIVE_ACTIONS.includes(parsed.action);
 
-      // Permission-First Protocol
       if (!skipConfirm && isSensitive && !pendingAction) {
         setPendingAction(parsed);
-        FRIDAYSpeak(`Boss, target is ${parsed.action}. Risk analyzed. Shall I engage?`, mode);
+        FRIDAYSpeak(`Mission ${parsed.action} ready. Shall I engage?`, mode);
         return true;
-      }
-
-      if (parsed.action === 'NAVIGATE') {
-        const url = Platform.select({ ios: `maps:0,0?q=${encodeURIComponent(parsed.target)}`, android: `geo:0,0?q=${encodeURIComponent(parsed.target)}` });
-        let briefing = `Target ${parsed.target} locked, boss.`;
-        if (location) {
-          try {
-            const dResp = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(parsed.target)}&format=json&limit=1`, { headers: { 'User-Agent': 'FRIDAY-AI/1.0' } });
-            const dData = await dResp.json();
-            if (dData[0]) {
-              const oResp = await fetch(`http://router.project-osrm.org/route/v1/driving/${location.coords.longitude},${location.coords.latitude};${dData[0].lon},${dData[0].lat}?overview=false`);
-              const oData = await oResp.json();
-              if (oData.routes[0]) briefing = `${parsed.target} is ${(oData.routes[0].distance/1000).toFixed(1)} km away. ETA ${Math.round(oData.routes[0].duration/60)} mins. Initiating.`;
-            }
-          } catch(e) {}
-        }
-        FRIDAYSpeak(briefing, mode, () => Linking.openURL(url)); return true;
       }
 
       if (parsed.action === 'TORCH') {
         setTorchOn(parsed.state === 'on');
-        FRIDAYSpeak(`Torch ${parsed.state === 'on' ? 'activated' : 'deactivated'}, boss.`, mode);
-        return true;
-      }
-
-      if (parsed.action === 'SCAN_NETWORK') {
-        const ip = await Network.getIpAddressAsync(); const subnet = ip.substring(0, ip.lastIndexOf('.'));
-        FRIDAYSpeak("Forging into local network, boss. Auditing all nodes.", "TACTICAL");
-        LANPortScanner.startScan({ networkId: subnet, ports: [80, 443, 8080, 22, 21], timeout: 400, onFinished: (list) => {
-          const names = list.map(d => d.ip).join(', ');
-          addMsg('assistant', `Audit complete. Detected active nodes at: ${names}. Perimeter secure.`);
-          FRIDAYSpeak("Audit complete, boss. Perimeter secure.", "TACTICAL");
-        }}); return true;
-      }
-
-      if (parsed.action === 'AUDIT_DEVICE') {
-        FRIDAYSpeak(`Auditing node ${parsed.ip}, boss. Grabbing banners...`, "TACTICAL");
-        setTimeout(() => addMsg('assistant', `Node ${parsed.ip} identified as Workstation. Potential exploits found.`), 3000);
+        FRIDAYSpeak(`Torch ${parsed.state === 'on' ? 'up' : 'down'}, boss.`, mode);
         return true;
       }
 
       if (parsed.action === 'VOLUME') {
-        let level = parsed.level;
-        if (level === 'up') level = Math.min(1, batteryLevel + 0.2); // Using batteryLevel as proxy for current vol if unknown
-        if (level === 'down') level = Math.max(0, 0.1);
-        await VolumeManager.setVolume(typeof level === 'number' ? level : 0.5);
-        FRIDAYSpeak("Volume adjusted, boss.", mode);
+        const cur = await VolumeManager.getVolume();
+        let val = parsed.value;
+        if (val === 'up') val = Math.min(1, cur + 0.2);
+        if (val === 'down') val = Math.max(0, cur - 0.2);
+        await VolumeManager.setVolume(typeof val === 'number' ? val : 0.5);
+        FRIDAYSpeak("Volume adjusted.", mode);
         return true;
       }
 
       if (parsed.action === 'BRIGHTNESS') {
-        const { status } = await Brightness.requestPermissionsAsync();
-        if (status === 'granted') {
-          await Brightness.setBrightnessAsync(typeof parsed.level === 'number' ? parsed.level : 0.5);
-          FRIDAYSpeak("Brightness recalibrated, boss.", mode);
-          return true;
-        }
+        let val = parsed.value;
+        if (val === 'up') val = Math.min(1, 0.8);
+        if (val === 'down') val = 0.2;
+        await Brightness.setBrightnessAsync(typeof val === 'number' ? val : 0.5);
+        FRIDAYSpeak("Brightness set.", mode);
+        return true;
+      }
+
+      if (parsed.action === 'SCAN_NETWORK') {
+        FRIDAYSpeak("Scanning perimeter, boss.", "TACTICAL");
+        const ip = await Network.getIpAddressAsync();
+        const subnet = ip.substring(0, ip.lastIndexOf('.'));
+        LANPortScanner.startScan({ networkId: subnet, ports: [80, 443, 8080], timeout: 1000, onFinished: (list) => {
+          addMsg('assistant', `Scan complete. ${list.length} nodes active.`);
+          FRIDAYSpeak(`Scan complete. Found ${list.length} nodes.`, "TACTICAL");
+        }}); return true;
       }
 
       if (parsed.action === 'CALL' || parsed.action === 'WHATSAPP') {
         const { status } = await Contacts.requestPermissionsAsync();
         if (status === 'granted') {
           const { data } = await Contacts.getContactsAsync({ fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers] });
-          const searchName = parsed.name.toLowerCase();
-          const candidates = data.filter(c => c.name).map(c => ({
-            ...c,
-            score: getSimilarity(searchName, c.name.toLowerCase())
-          })).filter(c => c.score > 0.5);
+          const target = parsed.value.toLowerCase();
+          const best = data.map(c => ({ ...c, score: getSimilarity(target, c.name?.toLowerCase()) }))
+                           .sort((a, b) => b.score - a.score)[0];
 
-          candidates.sort((a, b) => b.score - a.score);
-
-          if (candidates[0]) {
-            const phone = candidates[0].phoneNumbers?.[0]?.number?.replace(/[^0-9+]/g, '');
-            if (phone) {
-              if (parsed.action === 'CALL') {
-                FRIDAYSpeak(`Calling ${candidates[0].name}, boss.`, mode, () => Linking.openURL(`tel:${phone}`));
-              } else {
-                FRIDAYSpeak(`Opening WhatsApp for ${candidates[0].name}, boss.`, mode, () => Linking.openURL(`whatsapp://send?phone=${phone}`));
-              }
+          if (best && best.score > 0.5) {
+            const num = best.phoneNumbers?.[0]?.number?.replace(/[^0-9+]/g, '');
+            if (num) {
+              FRIDAYSpeak(`Initiating ${parsed.action} for ${best.name}.`, mode, () => {
+                Linking.openURL(parsed.action === 'CALL' ? `tel:${num}` : `whatsapp://send?phone=${num}`);
+              });
               return true;
             }
           }
-          FRIDAYSpeak(`Boss, ${parsed.name} contact list mein nahi mila.`, mode);
+          FRIDAYSpeak(`Target ${parsed.value} not identified.`, mode);
         }
       }
-    } catch (e) { console.log("[FRIDAY] Action Error:", e.message); } return false;
+    } catch (e) {} return false;
   };
 
   const sendMessage = async (overrideText) => {
     const msg = (overrideText || inputText).trim(); if (!msg || loading) return;
     setInputText(''); setLoading(true);
 
-    // Fast-Response Interceptor
-    const fastAction = getFastAction(msg);
-    if (fastAction) {
+    const fast = getFastAction(msg);
+    if (fast) {
       addMsg('user', msg);
-      const actionHandled = await handleAction(JSON.stringify(fastAction), true);
-      if (actionHandled) {
-        setLoading(false);
-        return;
-      }
+      if (await handleAction(JSON.stringify(fast), true)) { setLoading(false); return; }
     }
 
-    if (pendingAction && (msg.toLowerCase().includes("yes") || msg.toLowerCase().includes("initiate") || msg.toLowerCase().includes("go"))) {
-      const action = pendingAction; setPendingAction(null);
-      await handleAction(JSON.stringify(action), true); setLoading(false); return;
+    if (pendingAction && (msg.toLowerCase().match(/yes|go|initiate|do it/))) {
+      const act = pendingAction; setPendingAction(null);
+      await handleAction(JSON.stringify(act), true); setLoading(false); return;
     } else if (pendingAction) {
-      setPendingAction(null); addMsg('assistant', "Mission aborted, boss.");
-      FRIDAYSpeak("Mission aborted, boss.", "CONCERNED"); setLoading(false); return;
+      setPendingAction(null); addMsg('assistant', "Mission aborted.");
+      FRIDAYSpeak("Mission aborted.", "CONCERNED"); setLoading(false); return;
     }
 
     try {
       addMsg('user', msg);
-      const payload = messages.slice(-8).map(m => ({ role: m.role, content: m.content }));
-      payload.push({ role: 'user', content: msg });
-      const network = await Network.getNetworkStateAsync();
-      const reply = await callAI(payload, batteryLevel, weather, location, city, !network.isConnected);
-      const modeMatch = reply.match(/\[MODE:\s*(\w+)\]/i);
-      const newMode = modeMatch ? modeMatch[1].toUpperCase() : 'TACTICAL'; setMode(newMode);
-      const cleanReply = reply.replace(/\[MODE:\s*\w+\]/gi, '').replace(/\{[\s\S]*\}/, '').trim();
-      const actionHandled = await handleAction(reply);
-      if (!actionHandled) { addMsg('assistant', cleanReply); FRIDAYSpeak(cleanReply, newMode); }
-    } catch (_) { addMsg('assistant', 'Satellite link lost, boss.'); } finally { setLoading(false); }
+      const net = await Network.getNetworkStateAsync();
+      const reply = await callAI(messages.slice(-6).concat({role:'user', content:msg}), batteryLevel, weather, location, city, !net.isConnected);
+      const m = reply.match(/\[MODE:\s*(\w+)\]/i); if (m) setMode(m[1].toUpperCase());
+      const clean = reply.replace(/\[MODE:\s*\w+\]/gi, '').replace(/\{[\s\S]*\}/, '').trim();
+      if (!await handleAction(reply)) { addMsg('assistant', clean); FRIDAYSpeak(clean); }
+    } catch (_) { addMsg('assistant', 'Comms failure.'); } finally { setLoading(false); }
   };
 
   const theme = PERSONALITY_MODES[mode]?.color || '#00FFFF';
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: '#000808' }}>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: '#000505' }}>
       <StatusBar style="light" />
-      <View style={{ position: 'absolute', width: 2, height: 2, opacity: 0.15, zIndex: 999 }} pointerEvents="none">
-        <CameraView style={{ flex: 1 }} facing="back" enableTorch={torchOn} onCameraReady={() => setIsCameraReady(true)} />
+      <View style={{ position: 'absolute', width: 2, height: 2, opacity: 0.05 }} pointerEvents="none">
+        <CameraView style={{ flex: 1 }} facing="back" enableTorch={torchOn} />
       </View>
 
-      <View style={[styles.header, { borderBottomColor: theme + '30' }]}>
-        {isSentinelOn && <Animated.View style={[styles.aura, { borderColor: theme, opacity: auraAnim, transform: [{ scale: auraAnim.interpolate({inputRange: [0, 1], outputRange: [1, 1.5]}) }] }]} />}
+      <View style={[styles.header, { borderBottomColor: theme + '20' }]}>
         <View style={[styles.dataRibbon, { backgroundColor: theme + '05' }]}>
           <Text style={[styles.ribbonText, { color: theme }]}>
-            [ {isSentinelOn ? 'SENTINEL' : mode} ] | [ {localBrainReady ? 'BRAIN: LOCAL' : 'BRAIN: CLOUD'} ] | [ {city?.toUpperCase() || 'SEARCHING'} ] | [ {Math.round(batteryLevel * 100)}% PWR ]
+            [ {isSentinelOn ? 'GUARDIAN' : mode} ] | [ {localBrainReady ? 'CORE: LOCAL' : 'CORE: CLOUD'} ] | [ {city} ] | [ {Math.round(batteryLevel * 100)}% ]
           </Text>
         </View>
         <Animated.View style={[styles.logo, { transform: [{ scale: pulseAnim }], backgroundColor: theme, shadowColor: theme }]}><Text style={styles.logoText}>F</Text></Animated.View>
-        <Text style={[styles.subtitle, { color: theme }]}>{loading ? 'SYNCING...' : 'FRIDAY SENTINEL PRO - ETERNITY SYNC'}</Text>
       </View>
 
       <ScrollView style={styles.chat} ref={scrollViewRef} onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}>
-        {messages.length === 0 && <Text style={styles.placeholder}>[ SENTINEL STANDBY ]</Text>}
         {messages.map((msg, i) => (
           <View key={i} style={[styles.bubble, msg.role === 'user' ? styles.userBubble : [styles.aiBubble, { borderLeftColor: theme }]]}>
             <Text style={[styles.bubbleText, msg.role === 'user' ? styles.userText : { color: theme, fontWeight: '700' }]}>{msg.content}</Text>
           </View>
         ))}
-        {pendingAction && (
-          <View style={[styles.bubble, styles.aiBubble, { borderLeftColor: '#FFFF00', backgroundColor: '#1A1A00' }]}>
-            <Text style={{ color: '#FFFF00', fontWeight: 'bold' }}>[ MISSION PENDING: {pendingAction.action} ]</Text>
-            <Text style={{ color: '#FFFF00' }}>Waiting for "Go" signal...</Text>
-          </View>
-        )}
       </ScrollView>
 
-      <View style={[styles.inputRow, { borderTopColor: theme + '20' }]}>
-        <TouchableOpacity style={[styles.sentinelBtn, { borderColor: isSentinelOn ? '#00FF00' : theme + '40' }]} onPress={toggleSentinel}>
-          <Text style={{ fontSize: 10, color: isSentinelOn ? '#00FF00' : theme }}>{isSentinelOn ? 'ACTIVE' : 'SENTINEL'}</Text>
+      <View style={[styles.inputRow, { borderTopColor: theme + '10' }]}>
+        <TouchableOpacity style={[styles.sentinelBtn, { borderColor: isSentinelOn ? '#00FF00' : theme + '30' }]} onPress={() => toggleSentinel()}>
+          <Text style={{ fontSize: 9, color: isSentinelOn ? '#00FF00' : theme }}>{isSentinelOn ? 'ON' : 'SENT'}</Text>
         </TouchableOpacity>
-        <TextInput style={[styles.input, { borderColor: theme + '40', color: theme }]} placeholder={isListening ? "LISTENING..." : "AWAITING MISSION..."} placeholderTextColor={theme + '30'} value={inputText} onChangeText={setInputText} onSubmitEditing={() => sendMessage()} />
+        <TextInput style={[styles.input, { borderColor: theme + '30', color: theme }]} placeholder={isListening ? "LISTENING..." : "AWAITING MISSION..."} placeholderTextColor={theme + '20'} value={inputText} onChangeText={setInputText} onSubmitEditing={() => sendMessage()} />
         <TouchableOpacity style={[styles.sendBtn, { backgroundColor: theme }]} onPress={() => sendMessage()}><Text style={styles.sendBtnText}>⚡</Text></TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -572,23 +476,20 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  header: { alignItems: 'center', paddingTop: 40, paddingBottom: 20, borderBottomWidth: 1 },
-  aura: { position: 'absolute', top: 60, width: 80, height: 80, borderRadius: 40, borderWidth: 2 },
-  dataRibbon: { width: '100%', paddingVertical: 6, marginBottom: 15 },
-  ribbonText: { fontSize: 8, fontWeight: '800', textAlign: 'center', letterSpacing: 1.5 },
-  logo: { width: 66, height: 66, borderRadius: 33, justifyContent: 'center', alignItems: 'center', shadowOpacity: 1, shadowRadius: 15, elevation: 15 },
-  logoText: { color: '#000', fontSize: 32, fontWeight: '900' },
-  subtitle: { marginTop: 10, fontSize: 9, fontWeight: '800', letterSpacing: 4 },
-  chat: { flex: 1, paddingHorizontal: 16 },
-  placeholder: { color: '#1A3333', fontSize: 11, textAlign: 'center', marginTop: 120, letterSpacing: 3 },
-  bubble: { marginVertical: 6, maxWidth: '85%', paddingHorizontal: 14, paddingVertical: 10, borderLeftWidth: 3 },
-  userBubble: { alignSelf: 'flex-end', backgroundColor: '#001A1A', borderLeftColor: '#004A4A' },
+  header: { alignItems: 'center', paddingTop: 30, paddingBottom: 15, borderBottomWidth: 1 },
+  dataRibbon: { width: '100%', paddingVertical: 4, marginBottom: 10 },
+  ribbonText: { fontSize: 7, fontWeight: '900', textAlign: 'center', letterSpacing: 2 },
+  logo: { width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center', elevation: 10 },
+  logoText: { color: '#000', fontSize: 24, fontWeight: '900' },
+  chat: { flex: 1, paddingHorizontal: 15 },
+  bubble: { marginVertical: 4, maxWidth: '90%', paddingHorizontal: 12, paddingVertical: 8, borderLeftWidth: 2 },
+  userBubble: { alignSelf: 'flex-end', backgroundColor: '#001010', borderLeftColor: '#003030' },
   aiBubble: { alignSelf: 'flex-start' },
-  bubbleText: { fontSize: 14, lineHeight: 20 },
-  userText: { color: '#008B8B' },
-  inputRow: { flexDirection: 'row', alignItems: 'center', padding: 12, paddingBottom: Platform.OS === 'ios' ? 34 : 20, borderTopWidth: 1, gap: 10 },
-  sentinelBtn: { width: 60, height: 48, borderRadius: 4, borderWidth: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000F0F' },
-  input: { flex: 1, backgroundColor: '#000F0F', borderWidth: 1, borderRadius: 4, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
-  sendBtn: { width: 46, height: 48, borderRadius: 4, justifyContent: 'center', alignItems: 'center' },
-  sendBtnText: { color: '#000', fontSize: 18, fontWeight: '900' },
+  bubbleText: { fontSize: 13, lineHeight: 18 },
+  userText: { color: '#008080' },
+  inputRow: { flexDirection: 'row', alignItems: 'center', padding: 10, paddingBottom: 25, borderTopWidth: 1, gap: 8 },
+  sentinelBtn: { width: 45, height: 40, borderRadius: 4, borderWidth: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000808' },
+  input: { flex: 1, backgroundColor: '#000808', borderWidth: 1, borderRadius: 4, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13 },
+  sendBtn: { width: 40, height: 40, borderRadius: 4, justifyContent: 'center', alignItems: 'center' },
+  sendBtnText: { color: '#000', fontSize: 16, fontWeight: '900' },
 });

@@ -1,64 +1,64 @@
-# FRIDAY Mark V.5 - Sentinel Pro Optimization & Fixes
+# FRIDAY Mark V.5 - Sentinel Pro Stability & Ultra-Low Latency Overhaul
 
-This plan addresses the latency issues, the unnecessary "Go" signals for simple commands, and the Sentinel button crash.
+This plan addresses the extreme latency, hardware control failures, Sentinel crashes, and implements the "24/7 Always-On" requirement.
 
 ## User Review Required
 
 > [!IMPORTANT]
-> I will be adding a new custom Expo plugin to handle the background service registration. This will require a new build of the development client or a new APK build to take effect.
+> - **Always-On Mic:** I will be enabling the microphone 24/7 by default in the background. This will impact battery life but satisfies the "Suit always listening" requirement.
+> - **Build Required:** Like the previous fix, this will require a full build to apply the background service and permission changes.
 
 ## Proposed Changes
 
-### 1. Latency Optimization: "Fast-Response Engine"
-- **Problem:** Every command currently goes through the local or cloud LLM, causing significant delay for simple tasks.
-- **Fix:** Implement a regex-based `getFastAction` function in `App.js`.
-  - It will intercept commands like "torch on", "volume up", "call [name]" instantly.
-  - If a match is found, it bypasses the LLM and executes the action immediately with a pre-defined FRIDAY response.
-  - This reduces latency from seconds to milliseconds for common tasks.
+### 1. Ultra-Low Latency: "Iron Core" Command Processor
+- **Problem:** LLM inference is causing lag even for simple commands.
+- **Fix:** Upgrade `getFastAction` to a "Zero-Lag" processor.
+  - It will use a much wider array of keywords and fuzzy matching for Hindi/English commands.
+  - If a command is caught, it will **NEVER** wait for Llama or Cloud.
+  - Execution will be immediate, followed by a fast pre-cached voice response.
 
-### 2. Logic Correction: "Action Sensitivity Protocol"
-- **Problem:** FRIDAY asks "Shall I engage?" for every mission, including simple ones like turning on the torch.
-- **Fix:** Define a set of `SENSITIVE_ACTIONS` (e.g., `SCAN_NETWORK`, `AUDIT_DEVICE`).
-  - Modify `handleAction` to skip the confirmation state for non-sensitive actions (`TORCH`, `VOLUME`, `BRIGHTNESS`, `CALL`, `NAVIGATE`).
-  - For simple commands, FRIDAY will acknowledge and execute in one flow.
-
-### 3. Stability Fix: Sentinel Crash Resolution
-- **Problem:** The app crashes when pressing the Sentinel button. This is likely due to the missing `<service>` registration for `react-native-background-actions` and potential issues in the background task loop.
+### 2. Stability Fix: "Anti-Crash" Sentinel Layer
+- **Problem:** App crashes ("Friday keeps stopping") when background tasks conflict.
 - **Fix:**
-  - [NEW] Create `plugins/withBackgroundService.js` to automatically add the required `<service>` tag to `AndroidManifest.xml`.
-  - Update `app.json` to include this plugin.
-  - Refactor `sentinelTask` to be more efficient and prevent potential thread blocking.
-  - Add error handling around `BackgroundService.start`.
+  - Refactor `sentinelTask` to handle errors gracefully.
+  - Ensure `CameraView` is only active when needed, or use a more stable method for the Torch.
+  - Implement a `SafeSpeechStart` wrapper to prevent concurrent recognition requests that crash the native engine.
 
-### 4. Component Refinement
-- **Call Logic:** Improve the contact matching threshold and ensure the dialer opens instantly.
-- **Haptic Feedback:** Add tactical haptic pulses to acknowledge commands immediately before execution.
+### 3. Always-On Suit: "Guardian Protocol"
+- **Problem:** User wants 24/7 listening without buttons.
+- **Fix:**
+  - Automatically trigger `toggleSentinel` on app mount.
+  - The Sentinel will now be the "default state" of the app.
+  - App will restart speech recognition automatically if it times out or is interrupted.
+
+### 4. Hardware Precision Fix
+- **Torch:** Add a delay and state check to ensure `CameraView` is ready before flipping the switch.
+- **Volume/Brightness:** Implement direct step-up/step-down logic and ensure permissions are requested explicitly.
+- **Network Scan:** Expand scanning logic to use `Network.getNetworkStateAsync` for more accurate subnet targeting and increase timeout to 1000ms.
+
+### 5. Hinglish/Comms Accuracy
+- **WhatsApp/Call:** Tighten the similarity threshold and add "Confirming contact" voice feedback before opening the app to prevent "wrong contact" landings.
 
 ## Verification Plan
 
 ### Automated Tests
-- I will verify the logic in `App.js` by checking the regex patterns and action handling flow.
+- I will verify the new `FAST_ACTIONS` patterns to ensure they cover all variants of the user's requested commands.
 
 ### Manual Verification
-- **Latency:** Test "torch on" and "call rachna" to ensure they respond instantly without waiting for LLM inference.
-- **Confirmation:** Verify that "torch on" executes immediately, while "scan network" still asks for confirmation.
-- **Sentinel:** Press the Sentinel button and verify the app doesn't crash and the foreground service starts.
-- **Call:** Verify that searching for a contact and opening the dialer works as expected.
+- **Latency:** Test "Torch on" - response should be < 200ms.
+- **Always-On:** Test saying "Friday" without pressing any button.
+- **Stability:** Toggle hardware controls rapidly to ensure no crashes.
+- **Network Scan:** Verify that it correctly identifies devices on the local subnet.
 
 ---
 
-### [Component: Core Logic]
+### [Component: Core Application]
 
 #### [MODIFY] [App.js](file:///C:/Users/admin/friday_expo/App.js)
-- Implement `getFastAction` regex engine.
-- Update `sendMessage` to check `getFastAction` first.
-- Update `handleAction` to skip confirmation for non-sensitive actions.
-- Refactor `sentinelTask`.
-
-### [Component: Build Configuration]
-
-#### [NEW] [withBackgroundService.js](file:///C:/Users/admin/friday_expo/plugins/withBackgroundService.js)
-- Add Expo config plugin for background service registration.
+- Implement "Guardian Protocol" (Always-On launch).
+- Refactor `handleAction` to be synchronous where possible.
+- Update `sentinelTask` for stability.
+- Enhance `FAST_ACTIONS` dictionary.
 
 #### [MODIFY] [app.json](file:///C:/Users/admin/friday_expo/app.json)
-- Add `./plugins/withBackgroundService` to the plugins list.
+- Ensure all hardware and background permissions are correctly flagged.
