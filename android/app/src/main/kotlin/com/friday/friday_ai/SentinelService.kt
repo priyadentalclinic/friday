@@ -38,7 +38,7 @@ class SentinelService : Service() {
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 if (matches != null) {
                     for (match in matches) {
-                        if (match.toLowerCase(Locale.ROOT).contains("friday")) {
+                        if (match.lowercase(Locale.ROOT).contains("friday")) {
                             Log.d("FRIDAY", "Wake word detected!")
                             broadcastWake()
                         }
@@ -51,7 +51,7 @@ class SentinelService : Service() {
                 val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 if (matches != null) {
                     for (match in matches) {
-                        if (match.toLowerCase(Locale.ROOT).contains("friday")) {
+                        if (match.lowercase(Locale.ROOT).contains("friday")) {
                             broadcastWake()
                         }
                     }
@@ -82,12 +82,16 @@ class SentinelService : Service() {
     private fun broadcastWake() {
         val intent = Intent("com.friday.WAKE_UP")
         sendBroadcast(intent)
-        // High Intensity Pulse
+        // High-Energy Medium Pulse (Professional 2026 Waveform)
         val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            vibrator.vibrate(VibrationEffect.createOneShot(150, 255))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val composition = VibrationEffect.startComposition()
+                .addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.7f)
+                .addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, 0.5f, 50)
+                .compose()
+            vibrator.vibrate(composition)
         } else {
-            vibrator.vibrate(150)
+            vibrator.vibrate(VibrationEffect.createOneShot(100, 200))
         }
     }
 
