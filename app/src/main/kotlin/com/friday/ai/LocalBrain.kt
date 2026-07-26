@@ -39,7 +39,9 @@ class LocalBrain(private val context: Context) {
 
     fun generateResponse(prompt: String): Flow<String>? {
         if (!isReady) return null
-        return conversation?.sendMessageAsync(prompt)?.map { it.text }
+        return conversation?.sendMessageAsync(prompt)?.map { msg -> 
+            msg.contents.contents.filterIsInstance<Content.Text>().joinToString("") { it.text }
+        }
     }
 
     fun close() {
