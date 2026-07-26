@@ -156,7 +156,7 @@ fun FridayHud(
         containerColor = Color(0xFF000505),
         bottomBar = {
             Column {
-                Divider(color = Color(0xFF00FFFF).withOpacity(0.1))
+                HorizontalDivider(color = Color(0xFF00FFFF).copy(alpha = 0.1f))
                 
                 // Permission Card (Tony Stark Style)
                 viewModel.pendingAction?.let { action ->
@@ -168,7 +168,7 @@ fun FridayHud(
                 }
 
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(12),
+                    modifier = Modifier.fillMaxWidth().padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = { 
@@ -180,7 +180,7 @@ fun FridayHud(
                         Icon(
                             if (isSentinelActive) Icons.Default.Security else Icons.Default.SecurityUpdateWarning,
                             contentDescription = "Sentinel",
-                            tint = if (isSentinelActive) Color.Green else Color(0xFF00FFFF).withOpacity(0.5)
+                            tint = if (isSentinelActive) Color.Green else Color(0xFF00FFFF).copy(alpha = 0.5f)
                         )
                     }
 
@@ -188,7 +188,7 @@ fun FridayHud(
                         value = inputText,
                         onValueChange = { inputText = it },
                         modifier = Modifier.weight(1f),
-                        placeholder = { Text("AWAITING MISSION...", color = Color(0xFF00FFFF).withOpacity(0.2), fontSize = 12.sp) },
+                        placeholder = { Text("AWAITING MISSION...", color = Color(0xFF00FFFF).copy(alpha = 0.2f), fontSize = 12.sp) },
                         colors = TextFieldDefaults.colors(
                             unfocusedContainerColor = Color.Transparent,
                             focusedContainerColor = Color.Transparent,
@@ -217,7 +217,7 @@ fun FridayHud(
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
             Row(
-                modifier = Modifier.fillMaxWidth().background(Color(0xFF00FFFF).withOpacity(0.05)).padding(vertical: 4),
+                modifier = Modifier.fillMaxWidth().background(Color(0xFF00FFFF).copy(alpha = 0.05f)).padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.Center
             ) {
                 HudTag("CORE: ACTIVE")
@@ -233,7 +233,7 @@ fun FridayHud(
                 Text(
                     "FRIDAY MARK VII",
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 20.dp),
-                    color = Color(0xFF00FFFF).withOpacity(0.7f),
+                    color = Color(0xFF00FFFF).copy(alpha = 0.7f),
                     fontSize = 10.sp,
                     fontWeight = FontWeight.W900,
                     letterSpacing = 5.sp
@@ -242,7 +242,7 @@ fun FridayHud(
 
             LazyColumn(
                 state = listState,
-                modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal: 16)
+                modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp)
             ) {
                 items(viewModel.messages) { msg ->
                     ChatBubble(msg)
@@ -255,10 +255,10 @@ fun FridayHud(
 @Composable
 fun MissionConfirmation(action: String, onConfirm: () -> Unit, onAbort: () -> Unit) {
     Surface(
-        color = Color.Yellow.withOpacity(0.1f),
-        modifier = Modifier.fillMaxWidth().padding(16).border(1.dp, Color.Yellow, RoundedCornerShape(4.dp))
+        color = Color.Yellow.copy(alpha = 0.1f),
+        modifier = Modifier.fillMaxWidth().padding(16.dp).border(1.dp, Color.Yellow, RoundedCornerShape(4.dp))
     ) {
-        Column(modifier = Modifier.padding(12), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text("MISSION AUTHORIZATION: $action", color = Color.Yellow, fontSize = 10.sp, fontWeight = FontWeight.Black)
             Spacer(modifier = Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
@@ -274,11 +274,11 @@ fun MissionConfirmation(action: String, onConfirm: () -> Unit, onAbort: () -> Un
 @Composable
 fun HudTag(text: String) {
     Surface(
-        color = Color(0xFF00FFFF).withOpacity(0.1),
+        color = Color(0xFF00FFFF).copy(alpha = 0.1f),
         shape = RoundedCornerShape(2.dp),
-        modifier = Modifier.padding(horizontal: 4)
+        modifier = Modifier.padding(horizontal = 4.dp)
     ) {
-        Text(text, color = Color(0xFF00FFFF), fontSize = 7.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(horizontal: 6, vertical: 2))
+        Text(text, color = Color(0xFF00FFFF), fontSize = 7.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
     }
 }
 
@@ -291,13 +291,13 @@ fun SentientCore(scale: Float) {
             style = Stroke(width = 2.dp.toPx())
         )
         drawCircle(
-            color = Color(0xFF00FFFF).withOpacity(0.3f),
+            color = Color(0xFF00FFFF).copy(alpha = 0.3f),
             radius = (size.minDimension / 2) + 12.dp.toPx(),
             style = Stroke(width = 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(15f, 10f)))
         )
         drawCircle(
             brush = Brush.radialGradient(
-                colors = listOf(Color(0xFF00FFFF).withOpacity(0.5f), Color.Transparent),
+                colors = listOf(Color(0xFF00FFFF).copy(alpha = 0.5f), Color.Transparent),
                 center = center,
                 radius = size.minDimension / 2
             ),
@@ -310,11 +310,11 @@ fun SentientCore(scale: Float) {
 fun ChatBubble(msg: Map<String, String>) {
     val isUser = msg["role"] == "user"
     Column(
-        modifier = Modifier.fillMaxWidth().padding(vertical: 6),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
         horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
     ) {
         Surface(
-            color = if (isUser) Color(0xFF00FFFF).withOpacity(0.05) else Color.Transparent,
+            color = if (isUser) Color(0xFF00FFFF).copy(alpha = 0.05f) else Color.Transparent,
             modifier = Modifier.border(
                 width = 1.dp,
                 brush = Brush.horizontalGradient(
@@ -324,7 +324,7 @@ fun ChatBubble(msg: Map<String, String>) {
         ) {
             Text(
                 msg["content"] ?: "",
-                modifier = Modifier.padding(12),
+                modifier = Modifier.padding(12.dp),
                 color = if (isUser) Color(0xFF008B8B) else Color(0xFF00FFFF),
                 fontSize = 13.sp,
                 fontWeight = if (isUser) FontWeight.Normal else FontWeight.Bold,
