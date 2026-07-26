@@ -46,7 +46,8 @@
         "react-native-tcp-socket",
         "react-native-udp",
         "llama.rn",
-        "./plugins/withLocalModel"
+        "./plugins/withLocalModel",
+        "./plugins/withBackgroundService"
       ]
     },
     "extra": {
