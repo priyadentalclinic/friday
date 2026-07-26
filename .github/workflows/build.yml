@@ -1,4 +1,4 @@
-name: Build FRIDAY Iron Core APK
+name: Build FRIDAY Pure Core
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-apk:
-    name: Build Mark VI Sentinel (Flutter)
+    name: Build Mark VII Sentinel (Native Kotlin)
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -21,47 +21,35 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-          cache: true
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: Cache Local Brain (Llama 3.2 1B GGUF)
-        id: cache-brain
-        uses: actions/cache@v4
-        with:
-          path: android/app/src/main/assets/llama-3.2-1b-instruct-q4_k_m.gguf
-          key: llama-3.2-1b-q4km-v1
+      - name: Create assets directory
+        run: mkdir -p app/src/main/assets
 
       - name: Inject Local Brain (Llama 3.2 1B GGUF)
-        if: steps.cache-brain.outputs.cache-hit != 'true'
         run: |
-          echo "[FRIDAY] Downloading local brain model..."
-          mkdir -p android/app/src/main/assets
-          curl -L --retry 3 --retry-delay 5 \
-            "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf" \
-            -o android/app/src/main/assets/llama-3.2-1b-instruct-q4_k_m.gguf
-          echo "[FRIDAY] Model downloaded: $(du -sh android/app/src/main/assets/llama-3.2-1b-instruct-q4_k_m.gguf)"
+          echo "[FRIDAY] Accessing high-speed satellite link for model injection..."
+          curl -L "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf" -o app/src/main/assets/llama-3.2-1b-instruct-q4_k_m.gguf
 
-      - name: Install Flutter dependencies
-        run: flutter pub get
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
 
-      - name: Analyze code (non-blocking)
-        run: flutter analyze --no-fatal-infos || true
+      - name: Make gradlew executable
+        run: chmod +x gradlew
 
-      - name: Build Android APK (debug arm64)
-        run: flutter build apk --debug --target-platform android-arm64
+      - name: Build Mark VII APK
+        run: ./gradlew assembleDebug --no-daemon
+        env:
+          GRADLE_OPTS: "-Xmx6144m -Xms1024m -Dfile.encoding=UTF-8 -Dorg.gradle.parallel=true -Dorg.gradle.caching=true"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FRIDAY-MARK-VI-IRON-CORE
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          name: FRIDAY-MARK-VII-PURE-CORE
+          path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
 
-      - name: Upload to Gofile mirror
+      - name: Upload to high-speed mirror (Gofile.io)
         run: |
-          echo "[FRIDAY] Uploading to high-speed mirror..."
-          curl -L -F "file=@build/app/outputs/flutter-apk/app-debug.apk" \
-            https://upload.gofile.io/uploadfile || echo "[FRIDAY] Mirror upload failed, artifact still available above."
+          curl -L -F "file=@app/build/outputs/apk/debug/app-debug.apk" https://upload.gofile.io/uploadfile
