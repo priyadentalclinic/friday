@@ -59,6 +59,9 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     
+    implementation("com.google.code.gson:gson:2.10.1")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.3")
+    
     // AI & Local LLM (LiteRT)
     implementation("com.google.ai.edge.litertlm:litertlm-android:0.1.0")
     

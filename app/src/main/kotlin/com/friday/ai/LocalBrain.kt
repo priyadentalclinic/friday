@@ -16,31 +16,34 @@ class LocalBrain(private val context: Context) {
         try {
             val file = File(modelPath)
             if (!file.exists()) {
-                Log.e("FRIDAY", "Model file missing: $modelPath")
+                Log.e("FRIDAY", "Model file missing at: $modelPath")
                 return@withContext
             }
 
+            // Using LiteRT-LM (Standard for 2026 Android AI)
             val config = EngineConfig(
                 modelPath = modelPath,
-                device = Device.GPU,
+                device = Device.GPU, // Offload to GPU/NPU
                 maxTokens = 1024
             )
             
             engine = Engine(config).apply { initialize() }
             conversation = engine?.createConversation()
             isReady = true
-            Log.d("FRIDAY", "Local Brain Synced.")
+            Log.d("FRIDAY", "Local Supercomputer Brain Synced.")
         } catch (e: Exception) {
             Log.e("FRIDAY", "Brain Sync Failure: ${e.message}")
         }
     }
 
-    fun chat(prompt: String): Flow<String>? {
+    fun generateResponse(prompt: String): Flow<String>? {
+        if (!isReady) return null
         return conversation?.sendMessageAsync(prompt)
     }
 
     fun close() {
         conversation?.close()
         engine?.close()
+        isReady = false
     }
 }

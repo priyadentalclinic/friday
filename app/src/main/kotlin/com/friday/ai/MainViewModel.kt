@@ -5,6 +5,9 @@ import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
@@ -16,6 +19,7 @@ import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
+import java.io.File
 
 class MainViewModel : ViewModel() {
     private val client = OkHttpClient()
@@ -26,19 +30,69 @@ class MainViewModel : ViewModel() {
     val messages = mutableStateListOf<Map<String, String>>()
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
+    
+    var localBrain: LocalBrain? = null
+    var pendingAction by mutableStateOf<Map<String, Any>?>(null)
 
-    fun sendMessage(text: String, context: Context, tts: EdgeTtsManager, fuzzy: FuzzyMatcher) {
+    fun initLocalBrain(context: Context) {
+        viewModelScope.launch {
+            val modelPath = File(context.filesDir, "llama-3.2-1b-instruct-q4_k_m.gguf").absolutePath
+            localBrain = LocalBrain(context)
+            localBrain?.initialize(modelPath)
+        }
+    }
+
+    fun sendMessage(text: String, context: Context, tts: EdgeTtsManager, fuzzy: FuzzyMatcher, forge: NetworkForge) {
         if (text.isBlank()) return
         
+        // Confirmation handling
+        if (pendingAction != null && (text.contains("yes", true) || text.contains("initiate", true) || text.contains("go", true))) {
+            val action = pendingAction!!
+            pendingAction = null
+            executeHardwareAction(action, context, tts, fuzzy, forge)
+            return
+        } else if (pendingAction != null) {
+            pendingAction = null
+            postMsg("assistant", "Mission aborted, boss.", tts)
+            return
+        }
+
         messages.add(mapOf("role" to "user", "content" to text))
         _isLoading.value = true
 
+        val isSimple = text.length < 25
+        val hasInternet = isNetworkAvailable(context)
+
+        if (!hasInternet || (isSimple && localBrain?.isReady == true)) {
+            runLocalInference(text, tts, context, fuzzy, forge)
+        } else {
+            runCloudInference(text, context, tts, fuzzy, forge)
+        }
+    }
+
+    private fun runLocalInference(text: String, tts: EdgeTtsManager, context: Context, fuzzy: FuzzyMatcher, forge: NetworkForge) {
         viewModelScope.launch(Dispatchers.IO) {
-            val systemPrompt = "You are FRIDAY. Sentinel Core. Persona: Cybersecurity Expert. Latin script ONLY. Max 12 words. Commands: NAVIGATE, CALL, WHATSAPP, TORCH. Format: Reply [MODE: TYPE] {json}"
+            val prompt = "User: $text\nFRIDAY:"
+            val responseFlow = localBrain?.generateResponse(prompt)
+            if (responseFlow != null) {
+                var fullResponse = ""
+                responseFlow.collect { token ->
+                    fullResponse += token
+                }
+                handleAIOutput(fullResponse, context, tts, fuzzy, forge)
+            } else {
+                postMsg("assistant", "Local core failure. Re-sync required.", tts)
+            }
+        }
+    }
+
+    private fun runCloudInference(text: String, context: Context, tts: EdgeTtsManager, fuzzy: FuzzyMatcher, forge: NetworkForge) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val systemPrompt = "You are FRIDAY. Cybersecurity Sentinel. Latin letters ONLY. Max 15 words. Commands: NAVIGATE, CALL, WHATSAPP, TORCH. Format: Reply [MODE: TYPE] {json}"
             val payload = mapOf(
                 "model" to "google/gemma-2-9b-it",
                 "messages" to listOf(
-                    mapOf("role" to "system", "content" to systemPrompt),
+                    mapOf("role" to "system", "content" systemPrompt),
                     mapOf("role" to "user", "content" to text)
                 )
             )
@@ -63,58 +117,87 @@ class MainViewModel : ViewModel() {
                         val firstChoice = choices[0] as Map<*, *>
                         val message = firstChoice["message"] as Map<*, *>
                         val content = message["content"] as String
-                        
-                        handleResponse(content, context, tts, fuzzy)
+                        handleAIOutput(content, context, tts, fuzzy, forge)
                     }
                 }
             })
         }
     }
 
-    private fun handleResponse(content: String, context: Context, tts: EdgeTtsManager, fuzzy: FuzzyMatcher) {
+    private fun handleAIOutput(content: String, context: Context, tts: EdgeTtsManager, fuzzy: FuzzyMatcher, forge: NetworkForge) {
         val cleanMsg = content.replace(Regex("\\{.*\\}"), "").replace(Regex("\\[MODE:.*?\\]"), "").trim()
         postMsg("assistant", cleanMsg, tts)
 
         val jsonMatch = Regex("\\{.*\\}").find(content)
         jsonMatch?.value?.let { jsonStr ->
             try {
-                val action = gson.fromJson(jsonStr, Map::class.java)
+                val action = gson.fromJson(jsonStr, Map::class.java) as Map<String, Any>
                 val cmd = action["action"] as String
-                val target = action["target"] as? String ?: ""
                 
-                viewModelScope.launch(Dispatchers.Main) {
-                    when (cmd) {
-                        "CALL" -> {
-                            val contact = fuzzy.findBestContact(context, target)
-                            if (contact != null) {
-                                tts.speak("Dialing ${contact.name}, boss.") {
-                                    val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${contact.number}"))
-                                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    context.startActivity(intent)
-                                }
-                            } else postMsg("assistant", "Target not in perimeter, boss.", tts)
+                // Permission gating for sensitive actions
+                if (cmd == "SCAN_NETWORK" || cmd == "TORCH" || cmd == "CALL") {
+                    viewModelScope.launch(Dispatchers.Main) {
+                        pendingAction = action
+                        tts.speak("Boss, mission target is $cmd. Risk analyzed. Shall I engage?")
+                    }
+                } else {
+                    executeHardwareAction(action, context, tts, fuzzy, forge)
+                }
+            } catch (e: Exception) { Log.e("FRIDAY", "Action Error: ${e.message}") }
+        }
+    }
+
+    private fun executeHardwareAction(action: Map<String, Any>, context: Context, tts: EdgeTtsManager, fuzzy: FuzzyMatcher, forge: NetworkForge) {
+        val cmd = action["action"] as String
+        val target = action["target"] as? String ?: ""
+
+        viewModelScope.launch(Dispatchers.Main) {
+            when (cmd) {
+                "TORCH" -> {
+                    val state = action["state"] == "on"
+                    val hardware = context.getSystemService(Context.CAMERA_SERVICE) as android.hardware.camera2.CameraManager
+                    try {
+                        val cameraId = hardware.cameraIdList[0]
+                        hardware.setTorchMode(cameraId, state)
+                        tts.speak("Torch ${if(state) "active" else "dark"}, boss.")
+                    } catch (e: Exception) { postMsg("assistant", "Hardware lock on torch, boss.", tts) }
+                }
+                "SCAN_NETWORK" -> {
+                    postMsg("assistant", "Forging into local network...", tts)
+                    viewModelScope.launch(Dispatchers.IO) {
+                        val nodes = forge.auditNetwork()
+                        postMsg("assistant", "Audit complete. Found ${nodes.size} nodes on grid: ${nodes.joinToString(", ")}", tts)
+                    }
+                }
+                "CALL" -> {
+                    val contact = fuzzy.findBestContact(context, target)
+                    if (contact != null) {
+                        tts.speak("Dialing ${contact.name}, boss.") {
+                            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${contact.number}"))
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            context.startActivity(intent)
                         }
-                        "WHATSAPP" -> {
-                            val contact = fuzzy.findBestContact(context, target)
-                            if (contact != null) {
-                                val msg = action["text"] as? String ?: "Friday Mission"
-                                tts.speak("Drafting encrypted message to ${contact.name}.") {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/${contact.number}?text=${Uri.encode(msg)}"))
-                                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    context.startActivity(intent)
-                                }
-                            }
-                        }
-                        "NAVIGATE" -> {
-                            tts.speak("Target $target locked. Initiating OSRM briefing.") {
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=$target"))
-                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                context.startActivity(intent)
-                            }
+                    } else postMsg("assistant", "Target not in secure contacts, boss.", tts)
+                }
+                "WHATSAPP" -> {
+                    val contact = fuzzy.findBestContact(context, target)
+                    if (contact != null) {
+                        val msg = action["text"] as? String ?: "Friday Mission"
+                        tts.speak("Drafting message to ${contact.name}.") {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/${contact.number}?text=${Uri.encode(msg)}"))
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            context.startActivity(intent)
                         }
                     }
                 }
-            } catch (e: Exception) { Log.e("FRIDAY", "Action Error: ${e.message}") }
+                "NAVIGATE" -> {
+                    tts.speak("Target locked. Plotting route.") {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=$target"))
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                    }
+                }
+            }
         }
     }
 
@@ -124,5 +207,10 @@ class MainViewModel : ViewModel() {
             messages.add(mapOf("role" to role, "content" to content))
             if (role == "assistant") tts.speak(content)
         }
+    }
+
+    private fun isNetworkAvailable(context: Context): Boolean {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        return cm.activeNetwork != null
     }
 }

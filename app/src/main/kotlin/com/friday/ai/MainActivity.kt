@@ -41,7 +41,7 @@ class MainActivity : ComponentActivity() {
 
     private val wakeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            Log.d("FRIDAY", "Activity Wake Event")
+            Log.d("FRIDAY", "Activity Wake Event Detected")
             startVoiceInput()
         }
     }
@@ -49,9 +49,16 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         tts = EdgeTtsManager(this)
-        registerReceiver(wakeReceiver, IntentFilter("com.friday.ai.WAKE_WORD_DETECTED"), RECEIVER_EXPORTED)
+        
+        // Android 14+ Exported Receiver Flag
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(wakeReceiver, IntentFilter("com.friday.ai.WAKE_WORD_DETECTED"), RECEIVER_EXPORTED)
+        } else {
+            registerReceiver(wakeReceiver, IntentFilter("com.friday.ai.WAKE_WORD_DETECTED"))
+        }
         
         checkPermissions()
+        viewModel.initLocalBrain(this)
 
         setContent {
             FridayHud(viewModel, tts, networkForge, fuzzyMatcher) {
@@ -87,13 +94,14 @@ class MainActivity : ComponentActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == 102 && resultCode == RESULT_OK) {
             val result = data?.getStringArrayListExtra(RecognizerIntent.RESULTS_RECOGNITION)
-            result?.get(0)?.let { viewModel.sendMessage(it, this, tts, fuzzyMatcher) }
+            result?.get(0)?.let { viewModel.sendMessage(it, this, tts, fuzzyMatcher, networkForge) }
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         unregisterReceiver(wakeReceiver)
+        viewModel.localBrain?.close()
     }
 }
 
@@ -128,6 +136,16 @@ fun FridayHud(
         bottomBar = {
             Column {
                 Divider(color = Color(0xFF00FFFF).withOpacity(0.1))
+                
+                // Permission Card (Tony Stark Style)
+                viewModel.pendingAction?.let { action ->
+                    MissionConfirmation(
+                        action = action["action"].toString(),
+                        onConfirm = { viewModel.sendMessage("Yes", context, tts, fuzzy, forge) },
+                        onAbort = { viewModel.sendMessage("Abort", context, tts, fuzzy, forge) }
+                    )
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(12),
                     verticalAlignment = Alignment.CenterVertically
@@ -166,7 +184,7 @@ fun FridayHud(
 
                     IconButton(onClick = { 
                         if (inputText.isNotBlank()) {
-                            viewModel.sendMessage(inputText, context, tts, fuzzy)
+                            viewModel.sendMessage(inputText, context, tts, fuzzy, forge)
                             inputText = ""
                         }
                     }) {
@@ -182,8 +200,8 @@ fun FridayHud(
                 horizontalArrangement = Arrangement.Center
             ) {
                 HudTag("CORE: ACTIVE")
+                HudTag("BRAIN: ${if(viewModel.localBrain?.isReady == true) "LOCAL" else "CLOUD"}")
                 HudTag("SENTINEL: ${if(isSentinelActive) "UP" else "DOWN"}")
-                HudTag("AUDIT: READY")
             }
 
             Box(
@@ -207,6 +225,25 @@ fun FridayHud(
             ) {
                 items(viewModel.messages) { msg ->
                     ChatBubble(msg)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MissionConfirmation(action: String, onConfirm: () -> Unit, onAbort: () -> Unit) {
+    Surface(
+        color = Color.Yellow.withOpacity(0.1f),
+        modifier = Modifier.fillMaxWidth().padding(16).border(1.dp, Color.Yellow, RoundedCornerShape(4.dp))
+    ) {
+        Column(modifier = Modifier.padding(12), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("MISSION AUTHORIZATION: $action", color = Color.Yellow, fontSize = 10.sp, fontWeight = FontWeight.Black)
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
+                TextButton(onClick = onAbort) { Text("ABORT", color = Color.Red, fontWeight = FontWeight.Bold) }
+                Button(onClick = onConfirm, colors = ButtonDefaults.buttonColors(containerColor = Color.Yellow)) {
+                    Text("ENGAGE", color = Color.Black, fontWeight = FontWeight.ExtraBold)
                 }
             }
         }
