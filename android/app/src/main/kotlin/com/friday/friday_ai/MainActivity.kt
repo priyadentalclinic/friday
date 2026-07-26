@@ -86,7 +86,7 @@ class MainActivity : FlutterActivity() {
 
         val inputStream = assets.open(assetName)
         val outputStream = FileOutputStream(targetFile)
-        val buffer = ByteArray(8192)
+        val buffer = ByteArray(1024 * 128) // 128KB buffer for high-speed 800MB+ copy
         var length: Int
         while (inputStream.read(buffer).also { length = it } > 0) {
             outputStream.write(buffer, 0, length)

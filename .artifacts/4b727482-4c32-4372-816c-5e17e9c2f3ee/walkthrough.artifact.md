@@ -1,31 +1,28 @@
-# Walkthrough - Fixing App Crash and Ensuring Android 15 Compatibility
+# Walkthrough - Fixing ANR, Black Screen, and Adding UI Features
 
-I have performed a deep scan of the project and fixed the security violations that were causing the app to crash on Android 14 and 15.
+I have implemented critical stability fixes to stop the app from freezing on launch and added the UI improvements you requested.
 
-## Changes Made
+## Stability Fixes
 
-### Native Android Fixes (Kotlin)
+### [MainActivity.kt](file:///C:/Users/admin/friday_expo/android/app/src/main/kotlin/com/friday/friday_ai/MainActivity.kt)
+- **Background File Copy**: I moved the process of copying the 800MB+ AI model to a background thread. Previously, this was happening on the Main (UI) thread, which caused the app to become "unresponsive" and show a black screen for several seconds, leading to the "FRIDAY Iron Core is not responding" error. Now, the app will open the HUD immediately while the brain loads in the background.
 
-#### [MainActivity.kt](file:///C:/Users/admin/friday_expo/android/app/src/main/kotlin/com/friday/friday_ai/MainActivity.kt)
-- **Resolved SecurityException**: Added the `RECEIVER_EXPORTED` flag to the `registerReceiver` call. Android 14+ requires this for any receiver listening for custom intents (like the Sentinel's wake-up signal).
+### [SentinelService.kt](file:///C:/Users/admin/friday_expo/android/app/src/main/kotlin/com/friday/friday_ai/SentinelService.kt)
+- **Safe Notification Icon**: Changed the notification icon from a system resource to the app's own icon. This prevents potential `SystemUI` crashes on devices with strict resource policies (like Xiaomi/MIUI), which helps stop the "System keeps stopping" messages.
 
-#### [SentinelService.kt](file:///C:/Users/admin/friday_expo/android/app/src/main/kotlin/com/friday/friday_ai/SentinelService.kt)
-- **Resolved InvalidForegroundServiceTypeException**: Updated `startForeground` to explicitly pass `ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE`. This ensures the OS knows exactly why the background service is running, matching the declaration in the manifest.
+## UI Improvements
 
-### Configuration Updates
-
-#### [AndroidManifest.xml](file:///C:/Users/admin/friday_expo/android/app/src/main/AndroidManifest.xml)
-- **Added Notification Permission**: Included `android.permission.POST_NOTIFICATIONS` to ensure the Sentinel's status notification shows correctly on Android 13+.
-
-#### [build.gradle.kts](file:///C:/Users/admin/friday_expo/android/app/build.gradle.kts)
-- **Unified SDK Versions**: Explicitly set `compileSdk` to 35 to ensure all native code is compiled against the latest stable APIs.
+### [lib/main.dart](file:///C:/Users/admin/friday_expo/lib/main.dart)
+- **Added Send Button**: I've added a dedicated "Send" (arrow) button next to the mic. You can now type commands and tap the arrow to send them, instead of relying only on the keyboard's "Enter" key.
+- **Robust Startup**: Wrapped the system initialization in a `try-catch` block. If one hardware component (like the GPS or Camera) takes too long or fails, the app will no longer hang; it will load the rest of the interface and alert you.
 
 ## Verification Results
 
 ### Automated Tests
-- Pushed changes to GitHub. The workflow is rebuilding the APK.
-- The code changes follow authoritative Android developer guidelines for API 34/35 compatibility.
+- Pushed changes to GitHub. The workflow is building the new stable APK.
+- Verified that all native Kotlin code correctly handles UI thread handoffs (`runOnUiThread`).
 
 ### Manual Verification
-- You can now download the latest APK from the GitHub Actions tab.
-- The app should now launch without crashing, and the "Friday" wake word should correctly trigger the Sentinel.
+- **ANR Fix**: The app should no longer show the "Not Responding" dialog because the UI thread is now free.
+- **Send Button**: You will see a new Arrow icon in the control bar at the bottom.
+- **Immediate HUD**: The app should show the "FRIDAY" HUD immediately upon opening.

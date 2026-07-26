@@ -120,6 +120,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   final List<Map<String, String>> _messages = [];
   Llama? _localBrain;
   bool _localBrainReady = false;
+  bool _isBrainLoading = false;
   Map<String, dynamic>? _pendingAction;
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _textController = TextEditingController();
@@ -173,6 +174,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
 
   Future<void> _setupLocalLlama() async {
     try {
+      setState(() => _isBrainLoading = true);
       final dir = await getApplicationSupportDirectory();
       final path = "${dir.path}/$localModelName";
       
@@ -184,9 +186,15 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
 
       if (copied && File(path).existsSync()) {
         _localBrain = Llama(path);
-        setState(() => _localBrainReady = true);
+        setState(() {
+          _localBrainReady = true;
+          _isBrainLoading = false;
+        });
       }
-    } catch (e) { print("[FRIDAY] Local Brain Error: $e"); }
+    } catch (e) { 
+      print("[FRIDAY] Local Brain Error: $e"); 
+      setState(() => _isBrainLoading = false);
+    }
   }
 
   Future<void> _initSTT() async { await _speech.initialize(); }
@@ -390,6 +398,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               _infoTag("MODE: $_mode", theme),
               _infoTag(_city, theme),
               _infoTag("PWR: $_batteryLevel%", theme),
+              if (_isBrainLoading) _infoTag("BRAIN: LOADING...", Colors.orange),
             ],
           ),
           const SizedBox(height: 15),
