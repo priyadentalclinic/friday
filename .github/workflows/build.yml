@@ -24,6 +24,11 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Install Gradle
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gradle
+
       - name: Create assets directory
         run: mkdir -p app/src/main/assets
 
@@ -32,14 +37,8 @@ jobs:
           echo "[FRIDAY] Accessing high-speed satellite link for model injection..."
           curl -L "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf" -o app/src/main/assets/llama-3.2-1b-instruct-q4_k_m.gguf
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Make gradlew executable
-        run: chmod +x gradlew
-
       - name: Build Mark VII APK
-        run: ./gradlew :app:assembleDebug --no-daemon
+        run: gradle :app:assembleDebug --no-daemon
         env:
           GRADLE_OPTS: "-Xmx6144m -Xms1024m -Dfile.encoding=UTF-8 -Dorg.gradle.parallel=true -Dorg.gradle.caching=true"
 
