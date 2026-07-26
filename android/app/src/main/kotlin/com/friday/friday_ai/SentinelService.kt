@@ -7,26 +7,63 @@ import android.os.*
 import android.speech.*
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import io.flutter.plugin.common.MethodChannel
 import java.util.*
 
 class SentinelService : Service() {
     private var speechRecognizer: SpeechRecognizer? = null
     private var recognizerIntent: Intent? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate() {
         super.onCreate()
         Log.d("FRIDAY", "Sentinel Service Created")
-        
-        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "FRIDAY::SentinelWakeLock")
-        wakeLock?.acquire()
 
-        initRecognizer()
+        // Acquire wake lock with timeout (10 minutes) — refreshed on restart
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "FRIDAY::SentinelWakeLock"
+        )
+        wakeLock?.acquire(10 * 60 * 1000L)
+
+        // Start foreground FIRST before any heavy init (Android 15 requirement)
+        startForegroundWithNotification()
+
+        // SpeechRecognizer MUST be created on the main looper (Android 10+ requirement)
+        mainHandler.post {
+            initRecognizer()
+        }
+    }
+
+    private fun startForegroundWithNotification() {
+        val channelId = "FRIDAY_SENTINEL"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                "FRIDAY Sentinel",
+                NotificationManager.IMPORTANCE_LOW
+            )
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(channel)
+        }
+
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setContentTitle("FRIDAY Iron Core Active")
+            .setContentText("Monitoring local perimeters...")
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setOngoing(true)
+            .build()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+        } else {
+            startForeground(1, notification)
+        }
     }
 
     private fun initRecognizer() {
+        // This runs on main looper — required for SpeechRecognizer
         speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
         recognizerIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -61,7 +98,8 @@ class SentinelService : Service() {
 
             override fun onError(error: Int) {
                 Log.d("FRIDAY", "Recognizer Error: $error")
-                restartListening()
+                // Delay restart to avoid tight error loops
+                mainHandler.postDelayed({ restartListening() }, 1000L)
             }
 
             override fun onReadyForSpeech(params: Bundle?) {}
@@ -83,7 +121,7 @@ class SentinelService : Service() {
     private fun broadcastWake() {
         val intent = Intent("com.friday.WAKE_UP")
         sendBroadcast(intent)
-        // High-Energy Medium Pulse (Professional 2026 Waveform)
+        // High-Energy vibration pulse
         val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             val composition = VibrationEffect.startComposition()
@@ -92,36 +130,29 @@ class SentinelService : Service() {
                 .compose()
             vibrator.vibrate(composition)
         } else {
+            @Suppress("DEPRECATION")
             vibrator.vibrate(VibrationEffect.createOneShot(100, 200))
         }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val channelId = "FRIDAY_SENTINEL"
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "FRIDAY Sentinel", NotificationManager.IMPORTANCE_LOW)
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
-        }
-
-        val notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("FRIDAY Iron Core Active")
-            .setContentText("Monitoring local perimeters...")
-            .setSmallIcon(com.friday.friday_ai.R.mipmap.ic_launcher)
-            .build()
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
-        } else {
-            startForeground(1, notification)
+        // Notification/foreground is already started in onCreate()
+        // Re-acquire wake lock if service was restarted by system
+        if (wakeLock?.isHeld == false) {
+            wakeLock?.acquire(10 * 60 * 1000L)
         }
         return START_STICKY
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        speechRecognizer?.destroy()
-        wakeLock?.release()
+        mainHandler.post {
+            speechRecognizer?.destroy()
+            speechRecognizer = null
+        }
+        if (wakeLock?.isHeld == true) {
+            wakeLock?.release()
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

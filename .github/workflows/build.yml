@@ -15,48 +15,53 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-          cache: true
-
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Cache Local Brain
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Cache Local Brain (Llama 3.2 1B GGUF)
         id: cache-brain
         uses: actions/cache@v4
         with:
           path: android/app/src/main/assets/llama-3.2-1b-instruct-q4_k_m.gguf
-          key: llama-3.2-1b-instruct-q4_k_m.gguf
+          key: llama-3.2-1b-q4km-v1
 
       - name: Inject Local Brain (Llama 3.2 1B GGUF)
         if: steps.cache-brain.outputs.cache-hit != 'true'
         run: |
-          echo "[FRIDAY] Accessing high-speed satellite link for model injection..."
+          echo "[FRIDAY] Downloading local brain model..."
           mkdir -p android/app/src/main/assets
-          curl -L "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf" -o android/app/src/main/assets/llama-3.2-1b-instruct-q4_k_m.gguf
+          curl -L --retry 3 --retry-delay 5 \
+            "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf" \
+            -o android/app/src/main/assets/llama-3.2-1b-instruct-q4_k_m.gguf
+          echo "[FRIDAY] Model downloaded: $(du -sh android/app/src/main/assets/llama-3.2-1b-instruct-q4_k_m.gguf)"
 
-      - name: Install dependencies
+      - name: Install Flutter dependencies
         run: flutter pub get
 
-      - name: Build Android APK
-        run: flutter build apk --debug --target-platform android-arm64
+      - name: Analyze code (non-blocking)
+        run: flutter analyze --no-fatal-infos || true
 
-      - name: Rename APK for Delivery
-        run: mv build/app/outputs/flutter-apk/app-debug.apk app-debug.apk
+      - name: Build Android APK (debug arm64)
+        run: flutter build apk --debug --target-platform android-arm64
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: FRIDAY-MARK-VI-IRON-CORE
-          path: app-debug.apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
           retention-days: 7
 
-      - name: Upload to high-speed mirror (Gofile.io)
+      - name: Upload to Gofile mirror
         run: |
-          curl -L -F "file=@app-debug.apk" https://upload.gofile.io/uploadfile
+          echo "[FRIDAY] Uploading to high-speed mirror..."
+          curl -L -F "file=@build/app/outputs/flutter-apk/app-debug.apk" \
+            https://upload.gofile.io/uploadfile || echo "[FRIDAY] Mirror upload failed, artifact still available above."
