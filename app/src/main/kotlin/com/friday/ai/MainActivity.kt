@@ -50,7 +50,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         tts = EdgeTtsManager(this)
         
-        // Android 14+ Exported Receiver Flag
+        // Copy Local Brain from Assets to Internal Storage (The Sentinel Slim Path)
+        copyBrainFromAssets()
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(wakeReceiver, IntentFilter("com.friday.ai.WAKE_WORD_DETECTED"), RECEIVER_EXPORTED)
         } else {
@@ -65,6 +67,25 @@ class MainActivity : ComponentActivity() {
                 startVoiceInput()
             }
         }
+    }
+
+    private fun copyBrainFromAssets() {
+        val modelName = "llama-3.2-1b-instruct-q4_k_m.gguf"
+        val targetFile = java.io.File(filesDir, modelName)
+        if (targetFile.exists()) return
+
+        Thread {
+            try {
+                assets.open(modelName).use { input ->
+                    java.io.FileOutputStream(targetFile).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                Log.d("FRIDAY", "Local Brain Injected Successfully.")
+            } catch (e: Exception) {
+                Log.e("FRIDAY", "Brain Injection Failed: ${e.message}")
+            }
+        }.start()
     }
 
     private fun checkPermissions() {
