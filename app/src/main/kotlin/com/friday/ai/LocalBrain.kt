@@ -20,11 +20,11 @@ class LocalBrain(private val context: Context) {
                 return@withContext
             }
 
-            // Using LiteRT-LM (Standard for 2026 Android AI)
+            // Using LiteRT-LM 0.14.0 API
             val config = EngineConfig(
                 modelPath = modelPath,
-                device = Device.GPU, // Offload to GPU/NPU
-                maxTokens = 1024
+                backend = Backend.GPU(), // Recommended for LLMs
+                cacheDir = context.cacheDir.absolutePath
             )
             
             engine = Engine(config).apply { initialize() }

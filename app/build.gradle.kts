@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
+    id("org.jetbrains.kotlin.plugin.compose") version "2.0.0"
 }
 
 android {
@@ -39,9 +40,6 @@ android {
         compose = true
         buildConfig = true
     }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.14"
-    }
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -64,7 +62,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.3")
     
     // AI & Local LLM (LiteRT)
-    implementation("com.google.ai.edge.litertlm:litertlm-android:0.1.0")
+    implementation("com.google.ai.edge.litertlm:litertlm-android:0.14.0")
     
     // Networking
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
