@@ -27,13 +27,19 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Create local_models directory
-        run: mkdir -p assets/models
+      - name: Cache Local Brain
+        id: cache-brain
+        uses: actions/cache@v4
+        with:
+          path: android/app/src/main/assets/llama-3.2-1b-instruct-q4_k_m.gguf
+          key: llama-3.2-1b-instruct-q4_k_m.gguf
 
       - name: Inject Local Brain (Llama 3.2 1B GGUF)
+        if: steps.cache-brain.outputs.cache-hit != 'true'
         run: |
           echo "[FRIDAY] Accessing high-speed satellite link for model injection..."
-          curl -L "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf" -o assets/models/llama-3.2-1b-instruct-q4_k_m.gguf
+          mkdir -p android/app/src/main/assets
+          curl -L "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf" -o android/app/src/main/assets/llama-3.2-1b-instruct-q4_k_m.gguf
 
       - name: Install dependencies
         run: flutter pub get
