@@ -92,7 +92,7 @@ class MainViewModel : ViewModel() {
             val payload = mapOf(
                 "model" to "google/gemma-2-9b-it",
                 "messages" to listOf(
-                    mapOf("role" to "system", "content" systemPrompt),
+                    mapOf("role" to "system", "content" to systemPrompt),
                     mapOf("role" to "user", "content" to text)
                 )
             )
