@@ -1,37 +1,28 @@
 const { withAndroidManifest } = require('@expo/config-plugins');
 
 module.exports = function withBackgroundService(config) {
-  return withAndroidManifest(config, async (config) => {
-    const androidManifest = config.modResults.manifest;
-    const mainApplication = androidManifest.application[0];
+  return withAndroidManifest(config, (config) => {
+    const mainApplication = config.modResults.manifest.application[0];
 
-    // Ensure we have the foreground service permission (redundant but safe)
-    if (!androidManifest['uses-permission']) {
-      androidManifest['uses-permission'] = [];
-    }
+    // Ensure the background service is declared with the correct type for Android 14+
+    const service = {
+      $: {
+        'android:name': 'com.asterinet.react.bgactions.RNBackgroundActionsTask',
+        'android:foregroundServiceType': 'microphone',
+        'android:exported': 'false',
+      },
+    };
 
-    // Add the service tag for react-native-background-actions
     if (!mainApplication.service) {
       mainApplication.service = [];
     }
 
-    const serviceName = 'com.asterinet.reactfastbackgroundactions.RNBackgroundActionsTask';
-
-    const existingService = mainApplication.service.find(
-      (s) => s.$['android:name'] === serviceName
+    // Remove existing if any to avoid duplicates
+    mainApplication.service = mainApplication.service.filter(
+      (s) => s.$['android:name'] !== 'com.asterinet.react.bgactions.RNBackgroundActionsTask'
     );
 
-    if (!existingService) {
-      mainApplication.service.push({
-        $: {
-          'android:name': serviceName,
-          'android:enabled': 'true',
-          'android:exported': 'false',
-          'android:foregroundServiceType': 'microphone',
-        },
-      });
-      console.log('[FRIDAY] Background Service registered in AndroidManifest.');
-    }
+    mainApplication.service.push(service);
 
     return config;
   });
