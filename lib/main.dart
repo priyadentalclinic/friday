@@ -69,6 +69,27 @@ class FridayApp extends StatelessWidget {
   }
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+double getSimilarity(String str1, String str2) {
+  final s1 = str1.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '').replaceAll('bahan', 'behen').replaceAll('mummy', 'mom').replaceAll('papa', 'dad');
+  final s2 = str2.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '').replaceAll('bahan', 'behen').replaceAll('mummy', 'mom').replaceAll('papa', 'dad');
+  if (s1 == s2) return 1.0;
+  if (s1.length < 2 || s2.length < 2) return 0;
+  final bigrams1 = <String>{};
+  for (var i = 0; i < s1.length - 1; i++) {
+    bigrams1.add(s1.substring(i, i + 2));
+  }
+  final bigrams2 = <String>{};
+  for (var i = 0; i < s2.length - 1; i++) {
+    bigrams2.add(s2.substring(i, i + 2));
+  }
+  var intersect = 0;
+  for (final bi in bigrams1) {
+    if (bigrams2.contains(bi)) intersect++;
+  }
+  return (2.0 * intersect) / (bigrams1.length + bigrams2.length);
+}
+
 // ─── Main HUD ────────────────────────────────────────────────────────────────
 class HudScreen extends StatefulWidget {
   const HudScreen({super.key});
@@ -109,7 +130,11 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     await [Permission.microphone, Permission.location, Permission.contacts, Permission.notification].request();
     final b = Battery();
     _batteryLevel = await b.batteryLevel;
-    b.onBatteryLevelChanged.listen((l) => setState(() => _batteryLevel = l));
+    // Poll battery level every 60 seconds to save energy (Android KB 2026 best practice)
+    Timer.periodic(const Duration(seconds: 60), (timer) async {
+      final level = await b.batteryLevel;
+      if (mounted) setState(() => _batteryLevel = level);
+    });
     
     _setupLocalLlama();
     _initSTT();
@@ -129,7 +154,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
         final file = File(path);
         await file.writeAsBytes(byteData.buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes));
       }
-      _localBrain = Llama(modelPath: path);
+      _localBrain = Llama(path);
       setState(() => _localBrainReady = true);
     } catch (e) {
       print("[FRIDAY] Local Brain Error: $e");
@@ -248,11 +273,11 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     if (ip == null) return;
     final String subnet = ip.substring(0, ip.lastIndexOf('.'));
     
-    final List<DeviceModel> devices = [];
-    final stream = scanner.preciseScan(subnet, timeout: const Duration(milliseconds: 500));
+    final List<Host> devices = [];
+    final stream = scanner.icmpScan(subnet, timeout: const Duration(milliseconds: 500));
     
-    stream.listen((device) {
-      if (device.exists) devices.add(device);
+    stream.listen((host) {
+      if (host.pingTime != null) devices.add(host);
     }, onDone: () {
       final report = "Scan complete. Found ${devices.length} active nodes on your Wi-Fi. Perimeter secure.";
       setState(() => _messages.add({"role": "assistant", "content": report}));
