@@ -1,7 +1,7 @@
 package com.friday.friday_ai
 
 import android.content.*
-import android.os.Bundle
+import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -20,7 +20,11 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        registerReceiver(wakeReceiver, IntentFilter("com.friday.WAKE_UP"))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(wakeReceiver, IntentFilter("com.friday.WAKE_UP"), Context.RECEIVER_EXPORTED)
+        } else {
+            registerReceiver(wakeReceiver, IntentFilter("com.friday.WAKE_UP"))
+        }
     }
 
     override fun onDestroy() {

@@ -1,8 +1,3 @@
-- `[x]` Update `lib/main.dart` to fix `flutter_contacts` API usage
-    - `[x]` Fix `FlutterContacts.permissions.request()` call
-    - `[x]` Fix `FlutterContacts.getAll()` parameters
-- `[x]` Verify changes with `analyze_file`
-- `[x]` Fix WhatsApp/Call launching consistency
-    - `[x]` Add `<queries>` to `AndroidManifest.xml`
-    - `[x]` Update `_handleComms` in `lib/main.dart` to use `externalApplication` mode
-- `[x]` Final verification and walkthrough
+- `[ ]` Fix `MainActivity.kt` BroadcastReceiver registration
+- `[ ]` Fix `SentinelService.kt` startForeground call
+- `[ ]` Push changes and verify build

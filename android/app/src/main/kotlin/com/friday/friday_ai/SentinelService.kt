@@ -2,6 +2,7 @@ package com.friday.friday_ai
 
 import android.app.*
 import android.content.*
+import android.content.pm.ServiceInfo
 import android.os.*
 import android.speech.*
 import android.util.Log
@@ -109,7 +110,11 @@ class SentinelService : Service() {
             .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
             .build()
 
-        startForeground(1, notification)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+        } else {
+            startForeground(1, notification)
+        }
         return START_STICKY
     }
 
