@@ -42,7 +42,8 @@ class SentinelService : Service() {
             override fun onResults(results: Bundle?) {
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 matches?.forEach {
-                    if (it.lowercase(Locale.ROOT).contains("friday")) {
+                    val spoken = it.lowercase(Locale.ROOT)
+                    if (spoken.contains("hey friday") || spoken.contains("friday")) {
                         broadcastWake()
                     }
                 }
@@ -52,7 +53,8 @@ class SentinelService : Service() {
             override fun onPartialResults(partialResults: Bundle?) {
                 val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 matches?.forEach {
-                    if (it.lowercase(Locale.ROOT).contains("friday")) {
+                    val spoken = it.lowercase(Locale.ROOT)
+                    if (spoken.contains("hey friday") || spoken.contains("friday")) {
                         broadcastWake()
                     }
                 }

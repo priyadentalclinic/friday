@@ -2,8 +2,6 @@ package com.friday.ai
 
 import android.content.Context
 import android.net.ConnectivityManager
-import android.net.LinkProperties
-import android.net.NetworkCapabilities
 import android.util.Log
 import kotlinx.coroutines.*
 import java.net.*
@@ -27,7 +25,7 @@ class NetworkForge(private val context: Context) {
                 }
             }
         }
-        jobs.forEach { it.join() }
+        jobs.joinAll()
         
         discoveredNodes
     }
@@ -38,7 +36,7 @@ class NetworkForge(private val context: Context) {
             socket.connect(InetSocketAddress(ip, port), 200) // 200ms timeout
             socket.close()
             true
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             false
         }
     }
