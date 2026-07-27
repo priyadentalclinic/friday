@@ -1,46 +1,32 @@
-# FRIDAY Mark VII - Walkthrough
+# FRIDAY Mark VII - Mission Stability Patch Walkthrough
 
-The Mark VII upgrade is complete. FRIDAY has evolved from a utility bot into a cinematic AI partner.
+The stability patch is live. FRIDAY’s reasoning systems and voice recognition loops have been fortified.
 
-## Key Upgrades
+## Stability Improvements
 
-### 🌀 Cinematic HUD (Tony Stark Design)
-- **Sentient Core**: A flowing, pulsing Amoeba-style core replaces the static interface. It features rotating outer rings and a blurred sentient blob that reacts to FRIDAY's state.
-- **Dynamic Telemetry**: The top HUD bar now displays real-time data:
-  - **CORE**: Active status
-  - **BRAIN**: Local vs Cloud processing indicator
-  - **BATTERY**: Live percentage
-  - **TEMP**: Device temperature in Celsius
-- **Tactical Colors**:
-  - `Tactical Blue`: Normal operation.
-  - `Process Green`: Thinking or executing a mission.
-  - `Emergency Red`: Battery below 15%.
+### 🧠 Cloud & Local Brain Sync
+- **Valid OpenRouter Key**: Your provided API key has been integrated into `MainViewModel.kt`. Cloud inference will now engage correctly for complex missions.
+- **TFLite Integration**: Switched the local brain from `.gguf` to the validated `.tflite` format (`gemma-2b-it-gpu-int4.tflite`). This ensures the on-device engine can actually "sync" and reason without format errors.
+- **Improved Error Feedback**: FRIDAY will now explicitly notify you if a "Satellite link" (Cloud) or "Local Core" failure occurs.
 
-### 🎤 Mission-Ready Voice (Microsoft Neerja)
-- **Engine**: Integrated `en-IN-NeerjaNeural` for a high-fidelity Hinglish/English hybrid experience.
-- **Cinematic Tone**: Adjusted pitch to `+10Hz` and rate to `135%`. She sounds fast, active, and ready for orders—exactly like the movie version.
-- **SSML Mastery**: Uses `cheerful` expression style for positive reinforcement.
+### 🎤 Sentinel Recovery (Voice)
+- **Restart Stabilization**: Increased the listener restart delay to **500ms**. This prevents the phone’s microphone engine from hanging with "Recognizer Busy" errors.
+- **Error Filtering**: Added logic to silently handle common voice recognition errors (silence/timeouts), making the background listening much smoother.
 
-### 📳 Sentinel Wake-Word System
-- **Hey Friday**: The background listener now specifically targets "Hey Friday" for activation.
-- **Tactical Pulse**: On detection, FRIDAY triggers a **Medium Intensity Haptic Pulse** (150ms at 180 intensity) to confirm she is listening without you looking at the screen.
-
-### 🧠 Intelligent Partner Logic
-- **Hinglish Normalization**: `FuzzyMatcher` now understands Hinglish variations like "behen", "bahan", "bahen" to ensure contact searches are 90% accurate.
-- **50% Matching Threshold**: Lowered the strictness of contact matching to 0.5 (Dice Coefficient) to handle voice interpretation errors like "Diksha Bahan" finding "Diksha Behen".
+### 🌀 HUD Refinement (Tactical Focus)
+As requested, the HUD has been simplified to its two most critical states:
+- **Tactical Blue**: 90% of use. Indicates normal operation, listening, and mission readiness.
+- **Emergency Red**: Critical battery (below 15%) or system failure.
+- **Removed**: All other transitional colors (Green/Process) for a cleaner, high-tech cinematic look.
 
 ## Build & Deployment
-> [!TIP]
-> **GitHub Actions**: Your repo is now equipped with an automated build pipeline. Simply push these changes, and the "Build FRIDAY Pure Core" workflow will:
-> 1. Inject the 1.1B Llama 3.2 model into the assets.
-> 2. Compile the Mark VII APK.
-> 3. Provide a direct download link in the Actions tab.
+> [!IMPORTANT]
+> **New APK Required**: The previous APK used the wrong model format. You **must** download the new build from the GitHub Actions tab once the current run finishes.
 
 ## Final Status
-- **Kotlin Errors**: 0
-- **Gradle Errors**: 0
-- **Hallucinations**: 0
-- **Mission Readiness**: 100%
+- **Reasoning**: Online (Cloud + Local)
+- **Voice Loop**: Stabilized
+- **HUD**: Refined (Blue/Red Only)
 
 ---
-**FRIDAY is now standing by for your next mission, Boss.** 🦾
+**Systems are stabilizing, Boss. Standing by for commands.** 🦾🌀🎤

@@ -1,49 +1,38 @@
-# FRIDAY Mark VII - Cinematic HUD & Partner Evolution
+# FRIDAY Mark VII - Core Efficiency Upgrade (Llama 1B)
 
-This plan upgrades FRIDAY from a basic utility to a cinematic AI partner with a reactive HUD, high-fidelity Microsoft Edge TTS (Neerja), and proactive behavior patterns.
+This plan replaces the memory-heavy Gemma 2B model with a highly efficient **Llama 3.2 1B TFLite** model. This ensures FRIDAY remains responsive on your Redmi 13C (6GB RAM) without triggering system lag or crashes.
 
 ## User Review Required
 
 > [!IMPORTANT]
-> **Wake Word Battery Impact**: Using `SpeechRecognizer` for continuous "Hey Friday" listening in the background will significantly impact battery life on a Redmi 13C. I will implement a "Sentinel Mode" toggle to let you control when she is actively listening.
-> **Vibration Intensity**: I will use a medium haptic pulse for wake-word detection. Note that some MIUI versions restrict background vibration unless the app is explicitly whitelisted.
-> **Hinglish/English Hybrid**: I am configuring the Edge TTS to `en-IN-NeerjaNeural` which is specifically trained for the Indian accent and naturally handles Hinglish words like "behen", "bhai", etc.
+> **RAM Optimization**: Llama 3.2 1B (INT4 quantized) uses ~800MB - 1.2GB of RAM, compared to Gemma 2B's ~2GB+. This fits perfectly within your 3.1-4GB free RAM window, leaving plenty of room for system tasks.
+> **Intelligence vs Size**: While smaller than 2B, Llama 3.2 1B is a 2024 model specifically optimized for on-device reasoning and "Partner" style conversation. It is much smarter than the 0.5B models suggested by other agents.
 
 ## Proposed Changes
 
-### 1. Cinematic HUD (Tony Stark Design)
-- **Sentient Core**: Replace the static circle with an "Amoeba" or "Arc Reactor" style HUD that pulses and flows using Compose graphics.
-- **Dynamic States**:
-  - **Blue (Tactical)**: Normal idle/listening.
-  - **Red (Emergency)**: Critical battery or hardware failure.
-  - **Green (Process)**: Executing a hardware command.
-- **Data Overlays**: Add small, high-density text readouts for CPU temperature, battery percentage, and active tasks on the HUD.
+### 🧠 Local Brain Migration
+#### [MODIFY] [MainViewModel.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/MainViewModel.kt)
+- Update model reference to `llama-3.2-1b-it-gpu-int4.tflite`.
+- Ensure the `initLocalBrain` path points to the new file.
 
-### 2. Voice & Tone (Microsoft Edge Neerja)
-- **Voice Engine**: Configure `EdgeTtsManager` to use `en-IN-NeerjaNeural`.
-- **Personality Tuning**: Set `pitch="+10Hz"` and `rate="135%"` for that "mission-ready" fast-paced cinematic feel.
-- **Hinglish Support**: Update `FuzzyMatcher` to handle common Hinglish variations (e.g., "behen" vs "bahan") with a 50% matching threshold.
+#### [MODIFY] [MainActivity.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/MainActivity.kt)
+- Update the `copyBrainFromAssets` logic to look for the Llama 1B file.
+- Add a cleanup step to remove the old Gemma 2B file from internal storage to free up 2GB of disk space.
 
-### 3. Sentinel System (Background Awareness)
-- **Haptic Feedback**: Add `VibrationEffect` trigger on wake-word detection ("Hey Friday").
-- **Intent Capture**: Ensure the `SentinelService` stays active via a persistent notification.
-- **Wake Word Recognition**: Enhance the listener to trigger the main `MainActivity` speech input immediately upon hearing "Hey Friday".
-
-### 4. Hardware & Automation
-- **Contact Search**: Update `FuzzyMatcher` to use the **Dice Coefficient** for partial matching (50% threshold) to ensure "diksha bahan" finds "diksha behen".
-- **Hardware Orchestration**: Consolidate Torch, Volume, and Brightness controls into a single `HardwareOrchestrator` service.
+### 🛰️ Build Pipeline Optimization
+#### [MODIFY] [build.yml](file:///C:/Users/admin/friday_expo/.github/workflows/build.yml)
+- Replace the Gemma 2B download URL with the **Llama 3.2 1B TFLite** source.
+- Update the filename mapping to match the new local core.
 
 ## Verification Plan
 
 ### Automated Tests
-- `gradlew assembleDebug` to verify no Kotlin or Gradle errors.
-- Unit test for `FuzzyMatcher` with "diksha bahan" vs "diksha behen" inputs.
+- `gradlew assembleDebug` to verify asset mapping.
 
 ### Manual Verification
-1. **Wake Word**: Say "Hey Friday" in the background; verify medium vibration and HUD activation.
-2. **HUD Colors**: Drop battery to 5% and verify the HUD turns Red.
-3. **Voice**: Listen to "Neerja" and verify she sounds fast and "active".
-4. **Fuzzy Match**: Ask "Call diksha bahan" and verify it correctly identifies "diksha behen" in contacts.
+1. **Memory Check**: Use Android Studio Profiler or a system monitor to verify that RAM usage stays below 1.5GB during local inference.
+2. **Reasoning Test**: Ask FRIDAY: "Who are you?" or "Plan a trip to Rishikesh." Verify she uses the local core and responds within 2-3 seconds.
+3. **Storage Check**: Verify the old Gemma model is deleted and only the ~600MB Llama model remains.
 
 ---
-**Please approve this plan to begin the transformation of FRIDAY.**
+**Please approve this upgrade to ensure FRIDAY runs smoothly and never lags your phone.**

@@ -94,6 +94,8 @@ class MainActivity : ComponentActivity() {
         Thread {
             try {
                 assets.open(modelName).use { input ->
+                    val size = assets.openFd(modelName).length
+                    Log.d("FRIDAY", "Injecting Brain. Asset Size: $size bytes")
                     java.io.FileOutputStream(targetFile).use { output ->
                         input.copyTo(output)
                     }

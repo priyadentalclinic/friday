@@ -1,19 +1,15 @@
-# Task: FRIDAY Mark VII Transformation
+# Task: FRIDAY Mission Stability & HUD Refinement
 
-- `[x]` **Phase 1: Voice & Intelligence Upgrades**
-    - `[x]` Update `EdgeTtsManager.kt` with Neerja voice, cinematic pitch (+10Hz), and rate (135%).
-    - `[x]` Enhance `FuzzyMatcher.kt` with Hinglish normalization and 50% Dice Coefficient threshold.
-- `[x]` **Phase 2: Sentinel & Background Awareness**
-    - `[x]` Add medium haptic vibration to `SentinelService.kt` on "Hey Friday" detection.
-    - `[x]` Refine wake-word logic for background stability (Hey Friday support).
-- `[x]` **Phase 3: Cinematic HUD Overhaul**
-    - `[x]` Implement "Sentient Core" (Amoeba/Arc Reactor) animation in `MainActivity.kt`.
-    - `[x]` Add HUD state colors (Tactical Blue, Emergency Red, Process Green).
-    - `[x]` Integrate telemetry data (Battery %, CPU Temp) onto the HUD.
-- `[x]` **Phase 4: Logic & State Management**
-    - `[x]` Integrate mood-switching logic in `MainViewModel.kt` (handled via HUD color state).
-    - `[x]` Enhance action handling for multi-step tasks.
-- `[x]` **Phase 5: Verification & Deployment**
-    - `[x]` Run build checks to ensure no Kotlin/Gradle errors.
-    - `[x]` Update GitHub Actions build workflow (Completed previously).
-    - `[x]` Final walkthrough.
+- `[ ]` **Phase 1: Brain & Connectivity**
+    - `[ ]` Update `MainViewModel.kt` with the provided OpenRouter API Key.
+    - `[ ]` Update `build.yml` to fetch the correct `.tflite` model format.
+    - `[ ]` Refine `LocalBrain.kt` for TFLite engine compatibility.
+- `[ ]` **Phase 2: Sentinel Recovery**
+    - `[ ]` Stabilize `SentinelService.kt` with a 500ms restart delay.
+    - `[ ]` Implement robust error handling for voice recognition loops.
+- `[ ]` **Phase 3: HUD Visual Refinement**
+    - `[ ]` Remove Green/Process colors from `MainActivity.kt`.
+    - `[ ]` Standardize HUD to `Tactical Blue` (Normal) and `Emergency Red` (Critical).
+- `[ ]` **Phase 4: Deployment**
+    - `[ ]` Push fixes to GitHub.
+    - `[ ]` Final walkthrough.
