@@ -214,7 +214,7 @@ fun FridayHud(viewModel: MainViewModel, onMicClick: () -> Unit) {
                 horizontalArrangement = Arrangement.Center,
             ) {
                 HudTag("CORE: ACTIVE", hudColor)
-                HudTag("BRAIN: CLOUD", hudColor)
+                HudTag("BRAIN: GEMMA 4", hudColor)
                 HudTag("BATTERY: $batteryLevel%", hudColor)
                 HudTag("TEMP: ${temperature}°C", hudColor)
             }

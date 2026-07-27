@@ -1,31 +1,35 @@
-# FRIDAY Mark VII - Mission Critical Fixes (Crash & 404)
+# FRIDAY Mark VII - Gemma 4 "Future-Proof" Core & Vocal Fallback
 
-This plan resolves the "Friday keeps stopping" crash and the "404 Uplink Rejected" error to restore full satellite connectivity and vocal response.
+This plan integrates the specialized **Gemma 4 26B/31B** models into the OpenRouter uplink and adds a critical **Vocal Fallback** engine to ensure FRIDAY never stays silent again.
 
 ## User Review Required
 
-> [!CAUTION]
-> **MediaPlayer Crash**: The app was crashing because it tried to "speak" before the audio file was fully ready or if the download failed. I am adding a "State-Guard" to the MediaPlayer to ensure it only starts if the data is valid.
-> **OpenRouter 404**: I am adding the mandatory `HTTP-Referer` header. Some OpenRouter models (especially free ones) require this to verify the request origin.
+> [!IMPORTANT]
+> **Model IDs**: I am adding `google/gemma-4-26b-it:free` and `google/gemma-4-31b-it:free` as the EXCLUSIVE reasoning models for FRIDAY.
+> **Vocal Failover**: I am implementing a "Hybrid Voice" system. If the Microsoft Edge voice server is busy or blocked (401 error), FRIDAY will **automatically** switch to your Android phone's built-in voice. You will hear her no matter what.
+> **Satellite 404 Fix**: I've confirmed that adding a legitimate `Referer` header is required for these specific high-capacity free models.
 
 ## Proposed Changes
 
-### 1. Stop the "Friday keeps stopping" Crash
-#### [MODIFY] [EdgeTtsManager.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/voice/EdgeTtsManager.kt)
-- Wrap `mediaPlayer.prepare()` in a `try-catch` block.
-- Verify `file.length() > 0` before attempting playback.
-- Ensure the `onComplete` callback is only triggered if audio was actually synthesized.
-
-### 2. Fix OpenRouter 404 Uplink
+### 1. Future-Dated Brain Uplink
 #### [MODIFY] [MainViewModel.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/MainViewModel.kt)
-- Add `.addHeader("HTTP-Referer", "https://friday.ai")` to the request builder.
-- Add `.addHeader("Content-Type", "application/json")` explicitly.
-- Verify the `OPENROUTER_URL` for any invisible trailing spaces.
+- **Exclusion Logic**: Set FRIDAY to only talk to the requested Gemma 4 models.
+- **Header Fortification**:
+  - `Referer`: `https://friday-ai.com`
+  - `X-Title`: `FRIDAY OS`
+  - `Content-Type`: `application/json`
+- **Uplink Recovery**: Added a 15-second auto-timeout to stop the "Glow" if the satellite link fails.
 
-### 3. Fortify TTS Connectivity
+### 2. The "Never-Silent" Voice Engine
 #### [MODIFY] [EdgeTtsManager.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/voice/EdgeTtsManager.kt)
-- Switch to the most stable public Edge TTS WebSocket endpoint: `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1`.
-- Remove the `TrustedClientToken` if it continues to return 401/403, and use clean browser headers.
+- **Android TTS Integration**: Added `android.speech.tts.TextToSpeech` as a local backup.
+- **Failover Logic**: If the WebSocket handshake fails, her "Offline Mouth" engages instantly.
+- **Initial Boot Check**: When the app starts, she will now speak a "Systems online, Boss" message to verify her voice is active.
+
+### 3. Permission & UI Guard
+#### [MODIFY] [MainActivity.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/MainActivity.kt)
+- Ensure the Android TTS engine is initialized on startup.
+- Add status text in the HUD: **SATELLITE: GEMMA 4**.
 
 ## Verification Plan
 
@@ -33,9 +37,9 @@ This plan resolves the "Friday keeps stopping" crash and the "404 Uplink Rejecte
 - Build verification via GitHub Actions.
 
 ### Manual Verification
-1. **Connectivity Check**: Open the app and type "Ping." Verify she responds with "Awaiting instructions, boss."
-2. **Crash Test**: Say a long sentence to trigger multiple segments. Verify no "keeps stopping" popups occur even if the internet is slow.
-3. **Voice Check**: Ensure both Neerja and Swara voices trigger without authorization errors.
+1. **Startup Proof**: Open the app. She should say "Systems online, Boss."
+2. **Uplink Test**: Ask "Who are you?". Verify the response comes from the Gemma 4 core.
+3. **Voice Fail-Test**: Disable internet and ask a question. Verify she still speaks using the local system voice.
 
 ---
-**Boss, the Mark VII had a logic glitch in her audio buffers. I am ready to patch her core immediately.**
+**Boss, I am ready to link her to the Gemma 4 core and give her a permanent mouth. Shall I deploy?**

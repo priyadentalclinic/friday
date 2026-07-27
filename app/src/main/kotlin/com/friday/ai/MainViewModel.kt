@@ -23,11 +23,13 @@ class MainViewModel : ViewModel() {
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
+        .writeTimeout(15, TimeUnit.SECONDS)
         .build()
         
     private val gson = Gson()
     private val OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
     
+    // User key provided
     private val P1 = "sk-or-v1-b15ee5fb74b2fcc8e9a8b13ae2fd9072c60d29c"
     private val P2 = "909578c381ef524f60f8796be"
     private val OPENROUTER_API_KEY = P1 + P2
@@ -41,6 +43,7 @@ class MainViewModel : ViewModel() {
     fun initCoordinator(context: Context) {
         if (coordinator == null) {
             coordinator = CoordinatorAgent(context)
+            coordinator?.speak("Systems online, Boss.")
         }
     }
 
@@ -57,9 +60,13 @@ class MainViewModel : ViewModel() {
 
     private fun runCloudInference(text: String, mission: Mission) {
         viewModelScope.launch(Dispatchers.IO) {
-            val systemPrompt = "You are FRIDAY, a professional AI partner. Speak in Hinglish. Format: [Confirmation] {json command}"
+            // Using future-tier Gemma 4 models
+            val modelId = "google/gemma-4-31b-it:free"
+            val fallbackModelId = "google/gemma-4-26b-it:free"
+            
+            val systemPrompt = "You are FRIDAY, a professional AI partner. Respond in Hinglish. ALWAYS address the user as Boss. Format: [Confirmation] {json command}"
             val payload = mapOf(
-                "model" to "google/gemma-2-9b-it:free",
+                "model" to "$modelId,$fallbackModelId",
                 "messages" to listOf(
                     mapOf("role" to "system", "content" to systemPrompt),
                     mapOf("role" to "user", "content" to text)
@@ -70,16 +77,16 @@ class MainViewModel : ViewModel() {
             val request = Request.Builder()
                 .url(OPENROUTER_URL)
                 .addHeader("Authorization", "Bearer $OPENROUTER_API_KEY")
-                .addHeader("HTTP-Referer", "https://friday.ai")
+                .addHeader("HTTP-Referer", "https://friday-ai.com")
+                .addHeader("Referer", "https://friday-ai.com")
                 .addHeader("X-Title", "FRIDAY OS")
-                .addHeader("Content-Type", "application/json")
                 .post(body)
                 .build()
 
             client.newCall(request).enqueue(object : Callback {
                 override fun onFailure(call: Call, e: IOException) {
                     viewModelScope.launch(Dispatchers.Main) { _isLoading.value = false }
-                    postMsg("assistant", "Satellite link broken, boss.")
+                    postMsg("assistant", "Satellite link broken, Boss.")
                 }
 
                 override fun onResponse(call: Call, response: Response) {
@@ -97,7 +104,8 @@ class MainViewModel : ViewModel() {
                             postMsg("assistant", "Data corrupted in transit.")
                         }
                     } else {
-                        postMsg("assistant", "Uplink rejected. Status: ${response.code}")
+                        Log.e("FRIDAY", "Satellite Error: ${response.code} - $respBody")
+                        postMsg("assistant", "Satellite uplink rejected. Status: ${response.code}")
                     }
                 }
             })
@@ -107,12 +115,11 @@ class MainViewModel : ViewModel() {
     private fun handleAIOutput(content: String, mission: Mission) {
         var cleanMsg = content.replace(Regex("\\{.*\\}"), "").replace(Regex("\\[.*?\\]"), "").trim()
         if (cleanMsg.isBlank() && content.contains("{")) {
-            cleanMsg = "Awaiting execution, boss."
+            cleanMsg = "Acknowledged, Boss. Engaging protocol."
         }
         
         mission.status = MissionStatus.COMPLETED
         mission.replyText = cleanMsg
-        
         postMsg("assistant", cleanMsg)
     }
 
