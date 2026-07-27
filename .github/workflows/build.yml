@@ -32,10 +32,10 @@ jobs:
       - name: Create assets directory
         run: mkdir -p app/src/main/assets
 
-      - name: Inject Local Brain (Llama 3.2 1B GGUF)
+      - name: Inject Local Brain (Gemma 2B TFLite)
         run: |
           echo "[FRIDAY] Accessing high-speed satellite link for model injection..."
-          curl -L "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf" -o app/src/main/assets/llama-3.2-1b-instruct-q4_k_m.gguf
+          curl -L "https://huggingface.co/google/gemma-2b-it-tflite/resolve/main/gemma-2b-it-gpu-int4.tflite" -o app/src/main/assets/gemma-2b-it-gpu-int4.tflite
 
       - name: Build Mark VII APK
         run: gradle :app:assembleDebug --no-daemon

@@ -87,7 +87,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun copyBrainFromAssets() {
-        val modelName = "llama-3.2-1b-instruct-q4_k_m.gguf"
+        val modelName = "gemma-2b-it-gpu-int4.tflite"
         val targetFile = java.io.File(filesDir, modelName)
         if (targetFile.exists()) return
 
@@ -178,11 +178,7 @@ fun FridayHud(
         onDispose { context.unregisterReceiver(receiver) }
     }
 
-    val hudColor = when {
-        batteryLevel < 15 -> Color.Red
-        viewModel.isLoading.value -> Color.Green
-        else -> Color(0xFF00FFFF)
-    }
+    val hudColor = if (batteryLevel < 15) Color.Red else Color(0xFF00FFFF)
 
     val infiniteTransition = rememberInfiniteTransition()
     val pulse by infiniteTransition.animateFloat(

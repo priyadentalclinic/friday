@@ -79,9 +79,13 @@ class SentinelService : Service() {
 
     private fun restartListening() {
         Handler(Looper.getMainLooper()).postDelayed({
-            speechRecognizer?.stopListening()
-            speechRecognizer?.startListening(recognizerIntent)
-        }, 100)
+            try {
+                speechRecognizer?.stopListening()
+                speechRecognizer?.startListening(recognizerIntent)
+            } catch (e: Exception) {
+                Log.e("FRIDAY", "Restart Error: ${e.message}")
+            }
+        }, 500)
     }
 
     private fun broadcastWake() {

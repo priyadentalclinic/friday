@@ -36,7 +36,7 @@ class MainViewModel : ViewModel() {
 
     fun initLocalBrain(context: Context) {
         viewModelScope.launch {
-            val modelPath = File(context.filesDir, "llama-3.2-1b-instruct-q4_k_m.gguf").absolutePath
+            val modelPath = File(context.filesDir, "gemma-2b-it-gpu-int4.tflite").absolutePath
             localBrain = LocalBrain(context)
             localBrain?.initialize(modelPath)
         }
