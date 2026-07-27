@@ -1,12 +1,11 @@
-# Task: FRIDAY Mark VII - Vocal & Build Restoration
+# Task: FRIDAY Mark VII - Llama Core Integration
 
-- `[/]` **Phase 1: Build Pipeline Recovery**
-    - `[ ]` Update `build.yml` with public LiteRT model link (resolving 401 error).
-    - `[ ]` Update `MainActivity.kt` with the new model filename.
-- `[ ]` **Phase 2: Vocal & Text Restoration**
-    - `[ ]` Modify `MainViewModel.kt` to auto-insert verbal confirmations for pure commands.
-    - `[ ]` Add "Satellite Link Error" feedback for failed cloud calls.
-    - `[ ]` Toughen the system prompt to prevent silent command execution.
+- `[x]` **Phase 1: Pipeline Recovery (Llama)**
+    - `[x]` Update `build.yml` with verified Llama 3.2 1B TFLite URL.
+    - `[x]` Update `MainActivity.kt` to copy `llama-3.2-1b.tflite` from assets.
+- `[x]` **Phase 2: Local Brain Sync**
+    - `[x]` Update `MainViewModel.kt` to initialize the new Llama core.
+    - `[x]` Enhance system prompt for Hinglish & cinematic feel.
 - `[ ]` **Phase 3: Deployment & Validation**
-    - `[ ]` Push changes to GitHub and verify Actions run.
-    - `[ ]` Walkthrough report.
+    - `[ ]` Push to GitHub and monitor build status.
+    - `[ ]` Final walkthrough.

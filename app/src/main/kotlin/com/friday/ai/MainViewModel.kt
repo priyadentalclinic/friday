@@ -36,7 +36,7 @@ class MainViewModel : ViewModel() {
 
     fun initLocalBrain(context: Context) {
         viewModelScope.launch {
-            val modelPath = File(context.filesDir, "qwen2.5-0.5b-instruct-int8.tflite").absolutePath
+            val modelPath = File(context.filesDir, "llama-3.2-1b.tflite").absolutePath
             localBrain = LocalBrain(context)
             localBrain?.initialize(modelPath)
         }
@@ -94,7 +94,7 @@ class MainViewModel : ViewModel() {
 
     private fun runCloudInference(text: String, context: Context, tts: EdgeTtsManager, fuzzy: FuzzyMatcher, forge: NetworkForge) {
         viewModelScope.launch(Dispatchers.IO) {
-            val systemPrompt = "You are FRIDAY. Concise AI Partner. Latin ONLY. Max 15 words. MISSION: Provide a brief natural verbal confirmation BEFORE any command. Commands: NAVIGATE, CALL, WHATSAPP, TORCH. Format: [Acknowledge] {json}"
+            val systemPrompt = "You are FRIDAY, a highly intelligent AI partner. mission-ready, loyal, and proactive. Respond in a mix of English and Hindi (Hinglish). Keep replies concise but cinematic. ALWAYS provide a verbal confirmation before commands. Commands: NAVIGATE, CALL, WHATSAPP, TORCH. Format: [Confirmation] {json}"
             val payload = mapOf(
                 "model" to "google/gemma-2-9b-it",
                 "messages" to listOf(

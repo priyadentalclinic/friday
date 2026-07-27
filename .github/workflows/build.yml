@@ -32,19 +32,19 @@ jobs:
       - name: Create assets directory
         run: mkdir -p app/src/main/assets
 
-      - name: Inject Local Brain (Qwen 2.5 0.5B TFLite - Public)
+      - name: Inject Local Brain (Llama 3.2 1B TFLite - Verified)
         run: |
-          echo "[FRIDAY] Engaging high-speed satellite link for core injection..."
-          curl -L -f "https://huggingface.co/litert-community/Qwen2.5-0.5B-Instruct/resolve/main/Qwen2.5-0.5B-Instruct_seq128_dynamic_int8_ekv1280.tflite" -o app/src/main/assets/qwen2.5-0.5b-instruct-int8.tflite
+          echo "[FRIDAY] Engaging high-speed satellite link for Llama core injection..."
+          curl -L -f "https://huggingface.co/vimal-yuvabe/llama-3.2-1b-tflite/resolve/main/llama-3.2-1b-q8.tflite" -o app/src/main/assets/llama-3.2-1b.tflite
           
           # Core Integrity Check
-          FILE_SIZE=$(stat -c%s "app/src/main/assets/qwen2.5-0.5b-instruct-int8.tflite")
+          FILE_SIZE=$(stat -c%s "app/src/main/assets/llama-3.2-1b.tflite")
           echo "[FRIDAY] Core size identified: $FILE_SIZE bytes"
-          if [ "$FILE_SIZE" -lt 50000000 ]; then
-            echo "[FRIDAY] ERROR: Local core corrupted or empty. Mission Aborted."
+          if [ "$FILE_SIZE" -lt 1000000000 ]; then
+            echo "[FRIDAY] ERROR: Llama core corrupted or truncated. Mission Aborted."
             exit 1
           fi
-          echo "[FRIDAY] Local core integrity verified."
+          echo "[FRIDAY] Llama core integrity verified."
 
       - name: Build Mark VII APK
         run: gradle :app:assembleDebug --no-daemon

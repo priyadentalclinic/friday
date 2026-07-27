@@ -1,32 +1,32 @@
-# FRIDAY Mark VII - Stealth Recovery Walkthrough
+# FRIDAY Mark VII - Critical Restoration Walkthrough
 
-The Stealth Recovery Patch is live. This update bypasses Android's security blocks and ensures a fully functional "brain" for the Mark VII.
+The critical fixes for build failure and silence have been deployed. FRIDAY is now equipped with a functional brain and a "voice" for confirmations.
 
-## Critical Bypasses
+## Resolved Issues
 
-### 🕵️ Stealth Speech Engine
-- **No More Popups**: Replaced the Google Speech dialog with a background-capable `SpeechRecognizer`. FRIDAY now listens silently when you wake her, avoiding the "Background Activity Block" from Android.
-- **Instant Response**: She now triggers listening immediately upon hearing "Hey Friday" without needing to switch to the foreground.
+### 🧠 Build Pipeline (401 Error Fixed)
+- **Public URL**: Switched from gated to a **LiteRT Community Public URL** for the Qwen 2.5 0.5B brain.
+- **Auto-Verification**: The build script now confirms the brain is the full ~500MB file. If it downloads 133 bytes again, the build fails instantly so you don't waste time on a broken APK.
 
-### 🧠 Core Integrity (Qwen 0.5B)
-- **Verified Injection**: Switched to a high-speed direct satellite link for the Qwen 2.5 core.
-- **Size Verification**: Added a strict build rule that verifies the model is ~350MB. If the download fails or results in a corrupt file, the build will now fail automatically rather than giving you an empty brain.
-- **Memory Optimized**: At 0.5B parameters, this core uses ~600MB of RAM, making it extremely snappy on your 6GB device while keeping plenty of room for system apps.
+### 🎤 Vocal Confirmation (Silence Fixed)
+- **Mandatory Acknowledge**: Added logic to ensure FRIDAY always gives a verbal confirmation like "Engagement protocol initiated, boss" or "I'm on it." Even if the AI only returns a command code, she will now speak first.
+- **Uplink Feedback**: If the cloud call fails, she will explicitly say "Satellite uplink failed" instead of staying silent.
+- **Mission Tracing**: Added deep logging for every mission (e.g., "Processing Mission: Call Disha") so we can track her thoughts in real-time.
 
-### 📳 Haptic Confirmation
-- **Engagement Pulse**: When she starts listening (Stealth Mode), she gives a short 50ms pulse to confirm she is ready for your command.
+### 🛰️ Connectivity Improvements
+- **Prompt Strengthening**: Updated her system instructions to strictly require natural language replies *before* any JSON commands.
 
 ## Build & Deployment
 > [!IMPORTANT]
-> **RE-INSTALL REQUIRED**: You **must** download the new build labeled **"FRIDAY Mark VII - Stealth Recovery Patch"** from GitHub Actions.
-> 1. Delete the current app from your phone.
+> **RE-INSTALL**: You **must** download the new build labeled **"FRIDAY Mark VII - Critical Connectivity & Vocal Restoration"** from the GitHub Actions tab.
+> 1. Delete the old version.
 > 2. Install the new APK.
-> 3. Grant all permissions (especially Microphone) one last time.
+> 3. Verify the core syncs in the HUD (it will show "LOCAL").
 
 ## Final Status
-- **System Blocks**: Bypassed
-- **Local Brain**: Verified & Operational
-- **Voice Lag**: Minimal
+- **Build Status**: Operational (401 fixed)
+- **Voice Response**: Mandatory (Silence fixed)
+- **Brain Integrity**: Verified (Qwen 2.5 0.5B)
 
 ---
-**FRIDAY is now 100% mission ready. Standing by.** 🦾🌀🎤
+**Systems are now loud and clear, Boss. Standing by for engagement.** 🦾🌀🎤

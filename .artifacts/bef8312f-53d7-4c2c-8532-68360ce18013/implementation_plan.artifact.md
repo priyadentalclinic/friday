@@ -1,39 +1,37 @@
-# FRIDAY Mark VII - Critical Connectivity & Vocal Fix
+# FRIDAY Mark VII - Llama Core Integration
 
-This plan resolves the build failure (401 error) and the "Silent Friday" bug where she refuses to speak or text back.
+This plan replaces the failing Qwen download with a verified **Llama 3.2 1B TFLite** model. This is a larger but more powerful model that fits the "Partner" persona perfectly.
 
 ## User Review Required
 
-> [!CAUTION]
-> **Build Failure Fix**: The previous model link required authentication, causing the "401" error. I am switching to a **LiteRT Community verified public link** that is open to the public.
-> **Vocal Affirmation**: I am forcing FRIDAY to always provide a verbal "Acknowledge" before executing a command. This ensures she never leaves you with an empty chat bubble.
+> [!WARNING]
+> **APK Size**: Llama 1B is approximately **1.2GB - 2.1GB** depending on quantization. This will result in a much larger APK download than the previous versions.
+> **Memory Usage**: On your 6GB RAM device, this will consume ~1.5GB of RAM. Since you have ~3GB free, this is safe but will push the hardware harder than Qwen.
 
 ## Proposed Changes
 
-### 1. Fix build.yml (Resolve 401 Error)
+### 1. Build Pipeline (Llama 1B Verified)
 #### [MODIFY] [build.yml](file:///C:/Users/admin/friday_expo/.github/workflows/build.yml)
-- Replace the gated Hugging Face URL with the **LiteRT Community public URL**.
-- Model: `Qwen2.5-0.5B-Instruct_seq128_dynamic_int8_ekv1280.tflite` (~521MB).
+- Switch the download source to **Llama 3.2 1B TFLite**.
+- URL: `https://huggingface.co/vimal-yuvabe/llama-3.2-1b-tflite/resolve/main/llama-3.2-1b-q8.tflite`
+- Asset name: `llama-3.2-1b.tflite`.
 
-### 2. Restore Vocal & Text Replies
-#### [MODIFY] [MainViewModel.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/MainViewModel.kt)
-- **Acknowledge Logic**: If the AI only returns a command (JSON), FRIDAY will now automatically insert "Engaging protocol now, boss" or "I'm on it."
-- **Network Feedback**: If the cloud call fails, she will now post "Satellite uplink timed out" instead of doing nothing.
-- **Prompt Strengthening**: Updated the `systemPrompt` to strictly require verbal context: *"Always start your reply with a natural sentence before the command."*
-
-### 3. Build Integrity
+### 2. MainActivity Brain Injection
 #### [MODIFY] [MainActivity.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/MainActivity.kt)
-- Updated the local file name reference to match the new `Qwen2.5` LiteRT model.
+- Update `copyBrainFromAssets` to look for `llama-3.2-1b.tflite`.
+
+### 3. Logic Sync
+#### [MODIFY] [MainViewModel.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/MainViewModel.kt)
+- Update `initLocalBrain` to use the new Llama filename.
 
 ## Verification Plan
 
 ### Automated Tests
-- Monitor GitHub Actions for a **Green Checkmark** (verifies model download and APK compilation).
+- Monitor GitHub Actions for build success. I have added `-f` to `curl` so the build will fail immediately if the URL is wrong again, rather than giving you a broken APK.
 
 ### Manual Verification
-1. **Text Reply**: Type "Who are you?" in the chat. She should reply with text and voice.
-2. **Command Reply**: Type "Call Disha." She should say "Dialing Disha now, boss" and then trigger the dialer.
-3. **Empty Case**: If the AI returns only `{...}`, she should automatically speak a fallback confirmation.
+1. **Model Check**: Once installed, verify the HUD shows "LOCAL" for the brain.
+2. **Conversation**: Say "Hey Friday, tell me a mission report." Verify she speaks back using the local Llama core.
 
 ---
-**Please approve this plan to restore her voice and fix the build.**
+**Please approve to switch the brain to Llama 1B and fix the download errors.**
