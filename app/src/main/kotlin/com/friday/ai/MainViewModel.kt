@@ -70,18 +70,20 @@ class MainViewModel : ViewModel() {
             val request = Request.Builder()
                 .url(OPENROUTER_URL)
                 .addHeader("Authorization", "Bearer $OPENROUTER_API_KEY")
+                .addHeader("HTTP-Referer", "https://friday.ai")
                 .addHeader("X-Title", "FRIDAY OS")
+                .addHeader("Content-Type", "application/json")
                 .post(body)
                 .build()
 
             client.newCall(request).enqueue(object : Callback {
                 override fun onFailure(call: Call, e: IOException) {
-                    _isLoading.value = false
+                    viewModelScope.launch(Dispatchers.Main) { _isLoading.value = false }
                     postMsg("assistant", "Satellite link broken, boss.")
                 }
 
                 override fun onResponse(call: Call, response: Response) {
-                    _isLoading.value = false
+                    viewModelScope.launch(Dispatchers.Main) { _isLoading.value = false }
                     val respBody = response.body?.string()
                     if (response.isSuccessful && respBody != null) {
                         try {

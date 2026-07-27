@@ -13,19 +13,20 @@ import java.nio.ByteOrder
 
 class EdgeTtsManager(private val context: Context) {
     private val client = OkHttpClient()
-    private val EDGE_URL = "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=6A5AA1D4EAFF4E9787D7E05195A4F334"
+    // Stable public endpoint
+    private val EDGE_URL = "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1"
     
     private val mediaPlayers = LinkedList<MediaPlayer>()
     private var isPlaying = false
 
     fun speak(segments: List<VoiceSegment>, onDone: () -> Unit = {}) {
-        val segmentFiles = mutableListOf<File>()
-        var processedCount = 0
-
         if (segments.isEmpty()) {
             onDone()
             return
         }
+
+        val segmentFiles = mutableListOf<File>()
+        var processedCount = 0
 
         segments.forEachIndexed { index, segment ->
             val audioFile = File(context.cacheDir, "friday_segment_$index.mp3")
@@ -48,12 +49,14 @@ class EdgeTtsManager(private val context: Context) {
             .build()
 
         val outStream = FileOutputStream(targetFile)
-        var success = false
+        var hasAudio = false
 
         client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 val config = "X-Timestamp:${System.currentTimeMillis()}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n{\"context\":{\"synthesis\":{\"audio\":{\"metadataoptions\":{\"sentenceBoundaryEnabled\":\"false\",\"wordBoundaryEnabled\":\"false\"},\"outputFormat\":\"audio-24khz-48kbitrate-mono-mp3\"}}}}"
-                val ssml = "X-Timestamp:${System.currentTimeMillis()}\r\nContent-Type:application/ssml+xml\r\nPath:ssml\r\n\r\n<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xmlns:mstts='http://www.w3.org/2001/mstts' xml:lang='en-US'><voice name='$voice'><prosody pitch='+10Hz' rate='135%'>$text</prosody></voice></speak>"
+                // Escaping XML characters like &
+                val safeText = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                val ssml = "X-Timestamp:${System.currentTimeMillis()}\r\nContent-Type:application/ssml+xml\r\nPath:ssml\r\n\r\n<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xmlns:mstts='http://www.w3.org/2001/mstts' xml:lang='en-US'><voice name='$voice'><prosody pitch='+10Hz' rate='135%'>$safeText</prosody></voice></speak>"
                 webSocket.send(config)
                 webSocket.send(ssml)
             }
@@ -62,7 +65,6 @@ class EdgeTtsManager(private val context: Context) {
                 val buffer = bytes.asByteBuffer()
                 if (buffer.remaining() < 2) return
                 
-                // Read header length (16-bit Big-Endian)
                 buffer.order(ByteOrder.BIG_ENDIAN)
                 val headerLength = buffer.short.toInt() and 0xFFFF
                 
@@ -75,21 +77,21 @@ class EdgeTtsManager(private val context: Context) {
                         val audioBytes = ByteArray(buffer.remaining())
                         buffer.get(audioBytes)
                         outStream.write(audioBytes)
-                        success = true
+                        hasAudio = true
                     }
                 }
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
                 if (text.contains("turn.end")) {
-                    webSocket.close(1000, "Normal Closure")
+                    webSocket.close(1000, "Done")
                     outStream.close()
-                    onComplete(success)
+                    onComplete(hasAudio)
                 }
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                Log.e("FRIDAY", "TTS Connection Error: ${t.message}")
+                Log.e("FRIDAY", "TTS Failure: ${t.message}")
                 outStream.close()
                 onComplete(false)
             }
@@ -97,8 +99,12 @@ class EdgeTtsManager(private val context: Context) {
     }
 
     private fun playSegments(files: List<File>, onDone: () -> Unit) {
-        val queue = LinkedList(files)
-        
+        val queue = LinkedList(files.filter { it.exists() && it.length() > 0 })
+        if (queue.isEmpty()) {
+            onDone()
+            return
+        }
+
         fun playNext() {
             if (queue.isEmpty()) {
                 isPlaying = false
@@ -106,16 +112,27 @@ class EdgeTtsManager(private val context: Context) {
                 return
             }
             val file = queue.poll()
-            val mp = MediaPlayer().apply {
-                setDataSource(file?.absolutePath)
-                prepare()
-                start()
-                setOnCompletionListener { 
-                    release()
-                    playNext()
+            try {
+                val mp = MediaPlayer().apply {
+                    setDataSource(file?.absolutePath)
+                    setOnErrorListener { _, _, _ ->
+                        Log.e("FRIDAY", "MediaPlayer Error on ${file?.name}")
+                        release()
+                        playNext()
+                        true
+                    }
+                    setOnCompletionListener { 
+                        release()
+                        playNext()
+                    }
+                    prepare()
+                    start()
                 }
+                mediaPlayers.add(mp)
+            } catch (e: Exception) {
+                Log.e("FRIDAY", "Playback prepare failed: ${e.message}")
+                playNext()
             }
-            mediaPlayers.add(mp)
         }
 
         if (!isPlaying) {

@@ -1,20 +1,13 @@
-# Task: FRIDAY Mark VII - OS-Level Transformation
+# Task: FRIDAY Mark VII - Critical Stability & Uplink Fix
 
-- `[/]` **Phase 1: Architecture & Cleanup**
-    - `[ ]` Purge all local brain code and build steps.
-    - `[ ]` Setup modular package structure (`voice`, `core`, `agents`, `tasks`).
-    - `[ ]` Update `app/build.gradle.kts` with required libraries (ML Kit for backup, Room for Memory).
-- `[ ]` **Phase 2: Robust Native TTS (Hinglish)**
-    - `[ ]` Implement `HinglishRouter` (Script-based segmenting).
-    - `[ ]` Rebuild `EdgeTtsManager` with binary WebSocket protocol.
-    - `[ ]` Implement `MediaPlayer` queue for seamless audio stitching.
-- `[ ]` **Phase 3: Multi-Agent Intelligence**
-    - `[ ]` Implement `CoordinatorAgent` (The Brain).
-    - `[ ]` Implement `TaskAgent` with modular `Task` registry.
-    - `[ ]` Setup `MemoryAgent` with local SQLite storage.
-- `[ ]` **Phase 4: Cinematic HUD Upgrade**
-    - `[ ]` Build "Sentient Orb" Glassmorphism UI.
-    - `[ ]` Add real-time waveform and "Thought Stream" ticker.
-- `[ ]` **Phase 5: Deployment**
-    - `[ ]` Push to GitHub and monitor Actions.
-    - `[ ]` Final verification on device.
+- `[/]` **Phase 1: Crash Protection (MediaPlayer)**
+    - `[x]` Implement `try-catch` and file length checks in `EdgeTtsManager.kt`.
+    - `[x]` Add `OnErrorListener` to `MediaPlayer` to prevent app-killing exceptions.
+- `[/]` **Phase 2: Satellite Link Restoration (OpenRouter)**
+    - `[x]` Add `HTTP-Referer` and `X-Title` headers to `MainViewModel.kt`.
+    - `[x]` Ensure `Content-Type: application/json` is explicitly set.
+- `[/]` **Phase 3: Voice Engine Stabilization**
+    - `[x]` Switch to public Edge TTS endpoint and add Edge browser user-agent.
+- `[ ]` **Phase 4: Deployment**
+    - `[ ]` Commit and push fixes to GitHub.
+    - `[ ]` Final walkthrough.
