@@ -1,36 +1,27 @@
-# FRIDAY Mark VII - OS Architecture Transformation Walkthrough
+# FRIDAY Mark VII - Critical Stability & Uplink Walkthrough
 
-The "Friday OS" architecture is live. This update moves away from a simple app structure to a modular, multi-agent system designed for reliability and cinematic performance.
+Systems have been patched to resolve the crash and connectivity blocks encountered during previous engagements.
 
-## Key Architectural Upgrades
+## Core Stability Improvements
 
-### 🏦 Multi-Agent System (Phase 1)
-- **Coordinator Agent**: Acts as the central nervous system, managing missions and routing data between specialized agents.
-- **De-bloated Core**: Removed all legacy local brain code and binary blobs. The app is now lightweight (~15MB) and focused entirely on the new agent-driven logic.
+### 🛡️ MediaPlayer State-Guard (Crash Fixed)
+- **Problem**: The app crashed ("Friday keeps stopping") because it tried to play non-existent or corrupted audio files when the TTS link failed.
+- **Solution**: Implemented a **State-Guard** in `EdgeTtsManager.kt`. It now verifies that audio files exist and have data before initializing the `MediaPlayer`. Added a global `OnErrorListener` to gracefully release resources instead of crashing the process.
 
-### 🎤 Native Bilingual TTS (Bypassing Python)
-- **Robust Kotlin Handshake**: Re-implemented the Microsoft Edge TTS protocol natively in Kotlin using `OkHttp`. This bypasses the need for Python while maintaining access to high-fidelity voices.
-- **Binary Frame Decoder**: Implemented a custom decoder for the Edge binary format (Big-Endian parsing) to ensure zero audio corruption during synthesis.
-- **Hinglish Script Router**: Replaced sentence-level classifiers with a **Regex Script Segmenter**. It detects Devanagari vs. Latin characters at the word level, routing segments to `Swara` (Hindi) and `Neerja` (English/Hinglish) automatically.
+### 🛰️ OpenRouter Uplink Restoration (404 Fixed)
+- **Problem**: Satellite requests were being rejected with a `404 Not Found` because they lacked required identification headers.
+- **Solution**: Added mandatory **`HTTP-Referer`** and **`X-Title`** headers to the OpenRouter request pipeline in `MainViewModel.kt`. This identifies the request as coming from "FRIDAY OS," satisfying the verification requirements for free-tier models.
 
-### 🌀 Cinematic Glassmorphism HUD
-- **Sentient Orb**: Replaced the circle with a multi-layered, glowing Glassmorphism orb with holographic rings.
-- **Waveform HUD**: Added a real-time reactive waveform that activates during AI reasoning and playback.
-- **Mission Stream**: Integrated a status ticker showing her "internal thoughts" during complex missions.
+### 🎤 Voice Engine Stabilization
+- **Endpoint Update**: Switched to a more stable public WebSocket endpoint for the Neerja voice.
+- **XML Sanitization**: Added automatic escaping for special characters (like `&`) to prevent SSML parsing errors that were causing 401/403 responses from the voice server.
 
 ## Build & Deployment
 > [!IMPORTANT]
-> **CLEAN INSTALL REQUIRED**:
-> 1. Uninstall the current app from your phone.
-> 2. Download the new tiny APK (~15MB) from GitHub Actions.
-> 3. Grant all permissions.
-> 4. Test with: "Hello Friday, kaise ho?"
-
-## Final Status
-- **Architecture**: Modular Agent-Based
-- **Voice Pipeline**: Native Kotlin (Hinglish Optimized)
-- **HUD**: Glassmorphism Orb + Waveform
-- **Build Weight**: ~15MB (from 2.2GB)
+> **RE-INSTALL RECOMMENDED**:
+> 1. Download the latest build from GitHub Actions.
+> 2. Uninstall the previous version to clear the cache.
+> 3. Verify the "BRAIN: CLOUD" status in the HUD.
 
 ---
-**The foundation for a true Jarvis-level OS is now laid. Standing by for engagement, Boss.** 🦾🌀🎤
+**Satellite link is now stable and the core is shielded from audio panics. Standing by for instructions, Boss.** 🦾🌀📡
