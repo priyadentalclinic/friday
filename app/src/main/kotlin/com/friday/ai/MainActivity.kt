@@ -79,7 +79,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun copyBrainFromAssets() {
-        val modelName = "gemma-2b-it-gpu-int4.tflite"
+        val modelName = "qwen2.5-0.5b-instruct-int8.tflite"
         val targetFile = java.io.File(filesDir, modelName)
         if (targetFile.exists()) return
 

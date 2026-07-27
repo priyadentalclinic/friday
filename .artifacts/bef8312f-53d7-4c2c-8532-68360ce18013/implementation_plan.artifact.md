@@ -1,38 +1,39 @@
-# FRIDAY Mark VII - Stealth Listener & Core Recovery
+# FRIDAY Mark VII - Critical Connectivity & Vocal Fix
 
-This plan fixes the two reasons FRIDAY is "silent": Android blocking background activity launches and the local brain being corrupt/missing.
+This plan resolves the build failure (401 error) and the "Silent Friday" bug where she refuses to speak or text back.
 
 ## User Review Required
 
-> [!IMPORTANT]
-> **Stealth Listening**: To avoid Android's "Background Activity Block," I am moving the speech listener from an Intent-based popup to a **Continuous Service-based Recognizer**. You won't see a Google popup anymore; FRIDAY will just hear you and reply.
-> **Qwen 0.5B Direct Injection**: I am using a verified direct link to ensure the local core is ~350MB, not 133 bytes. This will make the build take longer (~5-10 mins) but it will actually work.
+> [!CAUTION]
+> **Build Failure Fix**: The previous model link required authentication, causing the "401" error. I am switching to a **LiteRT Community verified public link** that is open to the public.
+> **Vocal Affirmation**: I am forcing FRIDAY to always provide a verbal "Acknowledge" before executing a command. This ensures she never leaves you with an empty chat bubble.
 
 ## Proposed Changes
 
-### 1. Stealth Speech Engine
-#### [MODIFY] [MainActivity.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/MainActivity.kt)
-- Replace `speechLauncher` (Activity-based) with an internal `SpeechRecognizer` instance.
-- This allows FRIDAY to start listening immediately when "Hey Friday" is detected without being blocked by the system.
-
-### 2. Verified Brain Build
+### 1. Fix build.yml (Resolve 401 Error)
 #### [MODIFY] [build.yml](file:///C:/Users/admin/friday_expo/.github/workflows/build.yml)
-- Update the `curl` command to use the **MediaPipe-validated Qwen 0.5B** model.
-- Add a build step to verify the downloaded model size is > 50MB.
+- Replace the gated Hugging Face URL with the **LiteRT Community public URL**.
+- Model: `Qwen2.5-0.5B-Instruct_seq128_dynamic_int8_ekv1280.tflite` (~521MB).
 
-### 3. Mission Feedback
+### 2. Restore Vocal & Text Replies
 #### [MODIFY] [MainViewModel.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/MainViewModel.kt)
-- Add a "Thinking..." message to the HUD the moment speech is recognized.
-- Ensure the TTS engine speaks "I'm on it" or similar if the model takes more than 1 second to load.
+- **Acknowledge Logic**: If the AI only returns a command (JSON), FRIDAY will now automatically insert "Engaging protocol now, boss" or "I'm on it."
+- **Network Feedback**: If the cloud call fails, she will now post "Satellite uplink timed out" instead of doing nothing.
+- **Prompt Strengthening**: Updated the `systemPrompt` to strictly require verbal context: *"Always start your reply with a natural sentence before the command."*
+
+### 3. Build Integrity
+#### [MODIFY] [MainActivity.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/MainActivity.kt)
+- Updated the local file name reference to match the new `Qwen2.5` LiteRT model.
 
 ## Verification Plan
 
 ### Automated Tests
-- `gradlew assembleDebug` to verify the new speech recognition dependencies.
+- Monitor GitHub Actions for a **Green Checkmark** (verifies model download and APK compilation).
 
 ### Manual Verification
-1. **Background Test**: Minimize the app, say "Hey Friday," and then "What time is it?" Verify she speaks the time without opening any popups.
-2. **Brain Check**: Run `adb shell "run-as com.friday.ai ls -lh files/"` and verify the model file is > 300MB.
+1. **Text Reply**: Type "Who are you?" in the chat. She should reply with text and voice.
+2. **Command Reply**: Type "Call Disha." She should say "Dialing Disha now, boss" and then trigger the dialer.
+3. **Empty Case**: If the AI returns only `{...}`, she should automatically speak a fallback confirmation.
 
 ---
-**Please approve this plan to break through the system blocks and bring FRIDAY back online.**
+**Please approve this plan to restore her voice and fix the build.**

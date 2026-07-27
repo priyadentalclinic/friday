@@ -1,15 +1,12 @@
-# Task: FRIDAY Mark VII - Stealth Recovery
+# Task: FRIDAY Mark VII - Vocal & Build Restoration
 
-- `[/]` **Phase 1: Stealth Speech Engine**
-    - `[ ]` Implement internal `SpeechRecognizer` in `MainActivity.kt`.
-    - `[ ]` Remove Intent-based `speechLauncher`.
-    - `[ ]` Connect Sentinel wake-broadcast to Stealth Engine.
-- `[ ]` **Phase 2: Verified Model Injection**
-    - `[ ]` Update `build.yml` with direct model link.
-    - `[ ]` Add model size verification step to build pipeline.
-- `[ ]` **Phase 3: Logic & Feedback**
-    - `[ ]` Add "Thinking..." HUD indicator.
-    - `[ ]` Ensure TTS responds if model loading is delayed.
-- `[ ]` **Phase 4: Deployment & Validation**
-    - `[ ]` Push to GitHub and monitor build.
-    - `[ ]` Verify model size on device via adb.
+- `[/]` **Phase 1: Build Pipeline Recovery**
+    - `[ ]` Update `build.yml` with public LiteRT model link (resolving 401 error).
+    - `[ ]` Update `MainActivity.kt` with the new model filename.
+- `[ ]` **Phase 2: Vocal & Text Restoration**
+    - `[ ]` Modify `MainViewModel.kt` to auto-insert verbal confirmations for pure commands.
+    - `[ ]` Add "Satellite Link Error" feedback for failed cloud calls.
+    - `[ ]` Toughen the system prompt to prevent silent command execution.
+- `[ ]` **Phase 3: Deployment & Validation**
+    - `[ ]` Push changes to GitHub and verify Actions run.
+    - `[ ]` Walkthrough report.

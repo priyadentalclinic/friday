@@ -36,7 +36,7 @@ class MainViewModel : ViewModel() {
 
     fun initLocalBrain(context: Context) {
         viewModelScope.launch {
-            val modelPath = File(context.filesDir, "gemma-2b-it-gpu-int4.tflite").absolutePath
+            val modelPath = File(context.filesDir, "qwen2.5-0.5b-instruct-int8.tflite").absolutePath
             localBrain = LocalBrain(context)
             localBrain?.initialize(modelPath)
         }
@@ -94,7 +94,7 @@ class MainViewModel : ViewModel() {
 
     private fun runCloudInference(text: String, context: Context, tts: EdgeTtsManager, fuzzy: FuzzyMatcher, forge: NetworkForge) {
         viewModelScope.launch(Dispatchers.IO) {
-            val systemPrompt = "You are FRIDAY. Cybersecurity Sentinel. Latin letters ONLY. Max 15 words. Commands: NAVIGATE, CALL, WHATSAPP, TORCH. Format: Reply [MODE: TYPE] {json}"
+            val systemPrompt = "You are FRIDAY. Concise AI Partner. Latin ONLY. Max 15 words. MISSION: Provide a brief natural verbal confirmation BEFORE any command. Commands: NAVIGATE, CALL, WHATSAPP, TORCH. Format: [Acknowledge] {json}"
             val payload = mapOf(
                 "model" to "google/gemma-2-9b-it",
                 "messages" to listOf(
@@ -118,12 +118,19 @@ class MainViewModel : ViewModel() {
                 override fun onResponse(call: Call, response: Response) {
                     val respBody = response.body?.string()
                     if (response.isSuccessful && respBody != null) {
-                        val jsonResponse = gson.fromJson(respBody, Map::class.java)
-                        val choices = jsonResponse["choices"] as List<*>
-                        val firstChoice = choices[0] as Map<*, *>
-                        val message = firstChoice["message"] as Map<*, *>
-                        val content = message["content"] as String
-                        handleAIOutput(content, context, tts, fuzzy, forge)
+                        try {
+                            val jsonResponse = gson.fromJson(respBody, Map::class.java)
+                            val choices = jsonResponse["choices"] as List<*>
+                            val firstChoice = choices[0] as Map<*, *>
+                            val message = firstChoice["message"] as Map<*, *>
+                            val content = message["content"] as String
+                            handleAIOutput(content, context, tts, fuzzy, forge)
+                        } catch (e: Exception) {
+                            postMsg("assistant", "Decryption failed. Data corrupted.", tts)
+                        }
+                    } else {
+                        val code = response.code
+                        postMsg("assistant", "Satellite uplink failed. Status Code: $code", tts)
                     }
                 }
             })
@@ -131,8 +138,16 @@ class MainViewModel : ViewModel() {
     }
 
     private fun handleAIOutput(content: String, context: Context, tts: EdgeTtsManager, fuzzy: FuzzyMatcher, forge: NetworkForge) {
-        val cleanMsg = content.replace(Regex("\\{.*\\}"), "").replace(Regex("\\[MODE:.*?\\]"), "").trim()
-        postMsg("assistant", cleanMsg, tts)
+        Log.d("FRIDAY", "Satellite Response: $content")
+        var cleanMsg = content.replace(Regex("\\{.*\\}"), "").replace(Regex("\\[MODE:.*?\\]"), "").trim()
+        
+        if (cleanMsg.isBlank() && content.contains("{")) {
+            cleanMsg = "Engagement protocol initiated, boss."
+        }
+        
+        if (cleanMsg.isNotBlank()) {
+            postMsg("assistant", cleanMsg, tts)
+        }
 
         val jsonMatch = Regex("\\{.*\\}").find(content)
         jsonMatch?.value?.let { jsonStr ->
