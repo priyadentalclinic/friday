@@ -1,4 +1,4 @@
-package com.friday.ai
+package com.friday.ai.voice
 
 import android.app.*
 import android.content.*
@@ -62,7 +62,9 @@ class SentinelService : Service() {
 
             override fun onError(error: Int) {
                 Log.d("FRIDAY", "Recognizer Error: $error")
-                if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) return
+                if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
+                    speechRecognizer?.cancel()
+                }
                 restartListening()
             }
 
@@ -92,19 +94,8 @@ class SentinelService : Service() {
         val intent = Intent("com.friday.ai.WAKE_WORD_DETECTED")
         sendBroadcast(intent)
         
-        // Tactical Pulse
-        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
-            vibratorManager.defaultVibrator
-        } else {
-            getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-        }
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            vibrator.vibrate(VibrationEffect.createOneShot(150, 180)) // Medium Intensity
-        } else {
-            vibrator.vibrate(150)
-        }
+        val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        vibrator.vibrate(VibrationEffect.createOneShot(150, 180))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

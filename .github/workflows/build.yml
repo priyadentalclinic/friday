@@ -1,4 +1,4 @@
-name: Build FRIDAY Pure Core
+name: Build FRIDAY Mark VII (Cloud-First)
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-apk:
-    name: Build Mark VII Sentinel (Pure Native)
+    name: Build Mark VII Sentinel
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -29,9 +29,6 @@ jobs:
         with:
           gradle-version: 9.3.1
 
-      - name: Create assets directory
-        run: mkdir -p app/src/main/assets
-
       - name: Build Mark VII APK
         run: gradle :app:assembleDebug --no-daemon
         env:
@@ -40,10 +37,10 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FRIDAY-MARK-VII-PURE-CORE
+          name: FRIDAY-MARK-VII-CLOUD
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 7
 
-      - name: Upload to high-speed mirror (Gofile.io)
+      - name: Upload to mirror (Gofile.io)
         run: |
           curl -L -F "file=@app/build/outputs/apk/debug/app-debug.apk" https://upload.gofile.io/uploadfile

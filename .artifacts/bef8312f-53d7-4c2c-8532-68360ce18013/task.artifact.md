@@ -1,18 +1,20 @@
-# Task: FRIDAY Mark VII - Cloud Restoration (Reliable)
+# Task: FRIDAY Mark VII - OS-Level Transformation
 
-- `[x]` **Phase 1: Brain Removal & Code De-bloat**
-    - `[x]` Remove `LocalBrain` usage and file from project.
-    - `[x]` Remove asset copying logic from `MainActivity.kt`.
-    - `[x]` Update `build.yml` to stop downloading large models.
-    - `[x]` **CRITICAL**: Purged 800MB+ legacy binary blobs (`litert.aar`, `classes.jar`) from the repo causing packaging failures.
-- `[x]` **Phase 2: Bulletproof Cloud Logic**
-    - `[x]` Update `MainViewModel.kt` with provided OpenRouter Key.
-    - `[x]` Add mandatory `_isLoading.value = false` on ALL error paths.
-    - `[x]` Implement "Forced Acknowledge" (FRIDAY must speak/text a reason if she's silent).
-    - `[x]` Add network timeout (15s) to `OkHttpClient`.
-- `[x]` **Phase 3: HUD & Voice Polish**
-    - `[x]` Lock HUD to `Tactical Blue` / `Emergency Red`.
-    - `[x]` Update HUD tags to `BRAIN: CLOUD`.
-- `[ ]` **Phase 4: Deployment**
-    - `[x]` Push fixes to GitHub.
-    - `[ ]` Verify build success.
+- `[/]` **Phase 1: Architecture & Cleanup**
+    - `[ ]` Purge all local brain code and build steps.
+    - `[ ]` Setup modular package structure (`voice`, `core`, `agents`, `tasks`).
+    - `[ ]` Update `app/build.gradle.kts` with required libraries (ML Kit for backup, Room for Memory).
+- `[ ]` **Phase 2: Robust Native TTS (Hinglish)**
+    - `[ ]` Implement `HinglishRouter` (Script-based segmenting).
+    - `[ ]` Rebuild `EdgeTtsManager` with binary WebSocket protocol.
+    - `[ ]` Implement `MediaPlayer` queue for seamless audio stitching.
+- `[ ]` **Phase 3: Multi-Agent Intelligence**
+    - `[ ]` Implement `CoordinatorAgent` (The Brain).
+    - `[ ]` Implement `TaskAgent` with modular `Task` registry.
+    - `[ ]` Setup `MemoryAgent` with local SQLite storage.
+- `[ ]` **Phase 4: Cinematic HUD Upgrade**
+    - `[ ]` Build "Sentient Orb" Glassmorphism UI.
+    - `[ ]` Add real-time waveform and "Thought Stream" ticker.
+- `[ ]` **Phase 5: Deployment**
+    - `[ ]` Push to GitHub and monitor Actions.
+    - `[ ]` Final verification on device.

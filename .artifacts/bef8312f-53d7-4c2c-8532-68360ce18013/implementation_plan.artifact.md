@@ -1,45 +1,49 @@
-# FRIDAY Mark VII - Cloud-First reasoning (OpenRouter)
+# FRIDAY Mark VII - OS-Level AI Companion (Technical Fortification)
 
-This plan pivots FRIDAY to a cloud-first architecture, removing the heavy local brain and relying entirely on the **OpenRouter API** for reasoning. This will make the app extremely small (~20MB) and much more reliable for initial testing.
+This plan transforms FRIDAY into a modular, multi-agent AI system with a native, robust bilingual voice pipeline.
 
 ## User Review Required
 
-> [!IMPORTANT]
-> **API Key Safety**: I will ensure your OpenRouter API key is securely handled in the code.
-> **Internet Mandatory**: Since we are removing the local brain, FRIDAY will require an active internet connection to "think" or "speak."
-> **Model Selection**: I will set the default model to **Gemma 2 9B** (via OpenRouter) as it is excellent at Hinglish and very fast.
+> [!CAUTION]
+> **Native WebSocket Re-implementation**: I am NOT using a Python bridge. I am re-implementing the Microsoft Edge "Read Aloud" WebSocket protocol natively in Kotlin using `OkHttp`. This avoids the bloat of a Python runtime while maintaining access to the high-fidelity Neerja voice.
+> **Hybrid Language Routing**: ML Kit has limitations with word-level Hinglish. I am implementing a **Script-Aware Segmenter**. It will use Regex to detect Devanagari (Hindi script) and route it to the `Swara` voice, while routing Latin (English/Romanized Hindi) to `Neerja`. This ensures natural pronunciation without the "confusion" of sentence-level classifiers.
 
 ## Proposed Changes
 
-### 1. Simplify Brain Logic
-#### [MODIFY] [MainViewModel.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/MainViewModel.kt)
-- Remove all `LocalBrain` references and the `initLocalBrain` function.
-- Simplify `sendMessage` to always route through `runCloudInference`.
-- Fortify `runCloudInference` with better timeout handling and mandatory verbal confirmation.
+### 1. Robust Native TTS Engine
+#### [MODIFY] [EdgeTtsManager.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/EdgeTtsManager.kt)
+- **Protocol Upgrade**: Implement the Big-Endian binary header parsing (first 2 bytes = header length) as per the actual Edge TTS spec. This replaces the fragile string-searching logic.
+- **Handshake Fortification**: Add required `Origin` and `User-Agent` headers to match Edge browser signatures, preventing `403 Forbidden` errors.
+- **Voice Stitcher**: Support playing multiple audio segments (EN/HI) back-to-back using a `MediaPlayer` queue for smooth sentence delivery.
 
-### 2. Cleanup & De-bloat
+### 2. Script-Aware Segmenter (Hinglish Fix)
+#### [NEW] `com.friday.ai.voice.HinglishRouter`
+- **Regex Splitter**: Splits response text into segments based on character ranges.
+  - `[\u0900-\u097F]+` -> Devanagari (Hindi).
+  - `[A-Za-z0-9\s.,!?]+` -> Latin (English/Romanized).
+- **Phonetic Helper**: For Romanized Hindi words like "aaj" or "accha", `NeerjaNeural` will be tuned with specific prosody settings to ensure they don't sound "Westernized."
+
+### 3. Multi-Agent Core Architecture
+#### [NEW] `com.friday.ai.agents` Package
+- **CoordinatorAgent**: The central nervous system that routes data between specialized agents.
+- **ConversationAgent**: Manages wit, sarcasm, and Hinglish generation logic.
+- **TaskAgent**: Executes phone-level commands (Calls, Apps, Hardware).
+- **MemoryAgent**: Uses a local SQLite (Room) store to remember "Sir's" preferences.
+
+### 4. Cinematic HUD Overhaul
 #### [MODIFY] [MainActivity.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/MainActivity.kt)
-- Remove `copyBrainFromAssets` logic.
-- Update the HUD tags to show **BRAIN: CLOUD** permanently.
-
-#### [MODIFY] [build.yml](file:///C:/Users/admin/friday_expo/.github/workflows/build.yml)
-- Remove the "Inject Local Brain" steps.
-- The build will now be fast (under 2 minutes) and the APK will be tiny (~20MB).
-
-### 3. Voice & Personality
-#### [MODIFY] [MainViewModel.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/MainViewModel.kt)
-- Update the System Prompt to be even more "Partner-like" since we have the cloud's full power:
-  - *"You are FRIDAY, a loyal AI partner. mission-ready. Respond in a mix of English and Hindi (Hinglish). If a command is triggered, explain what you are doing naturally."*
+- **Sentient Orb**: Replace the Amoeba with a multi-layered Glassmorphism orb.
+- **Thought Stream**: Add a scrolling ticker that shows what the agents are "thinking" (e.g., `PLANNING_AGENT: SEARCHING_CONTACTS...`).
 
 ## Verification Plan
 
 ### Automated Tests
-- `gradlew assembleDebug` to ensure no orphaned local-brain references.
+- **Binary Parser Test**: Unit test the WebSocket frame decoder with sample Edge TTS binary frames.
+- **Hinglish Split Test**: Verify that "Hello sir, aap kaise hain?" splits into two segments with correct voice assignments.
 
 ### Manual Verification
-1. **Connectivity Test**: Type "How's the weather in Delhi?" Verify the cloud response appears in text and voice.
-2. **Command Test**: Type "Call Disha." Verify she says "Connecting you to Disha now" and opens the dialer.
-3. **APK Size Check**: Confirm the APK is small and installs instantly.
+1. **Background Stability**: Test if she listens and speaks while the phone is locked.
+2. **Language Flow**: Speak a Hinglish command and verify the response sounds like a natural urban Indian professional.
 
 ---
-**Please approve this shift to Cloud-First mode to get FRIDAY talking immediately.**
+**Does this technical approach for the TTS and Language ID meet your requirements, Boss?**

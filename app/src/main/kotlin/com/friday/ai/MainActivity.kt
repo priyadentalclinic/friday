@@ -9,8 +9,6 @@ import android.widget.Toast
 import android.os.BatteryManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
 import androidx.compose.animation.*
@@ -31,7 +29,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.blur
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
@@ -40,24 +37,22 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+import com.friday.ai.voice.SentinelService
+
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
-    private lateinit var tts: EdgeTtsManager
-    private val fuzzyMatcher = FuzzyMatcher()
-    private val networkForge by lazy { NetworkForge(this) }
     private var internalRecognizer: SpeechRecognizer? = null
 
     private val wakeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            Log.d("FRIDAY", "Stealth Engine Engagement Detected")
+            Log.d("FRIDAY", "Engaging Stealth Link...")
             runOnUiThread { startVoiceInput() }
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.d("FRIDAY", "Mark VII Core Initializing...")
-        tts = EdgeTtsManager(this)
+        viewModel.initCoordinator(this)
         initInternalRecognizer()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -67,56 +62,39 @@ class MainActivity : ComponentActivity() {
         }
         
         checkPermissions()
-        startHeartbeat()
 
         setContent {
-            Log.d("FRIDAY", "HUD Interface Rendering...")
-            FridayHud(viewModel, tts, networkForge, fuzzyMatcher) {
+            FridayHud(viewModel) {
                 startVoiceInput()
             }
         }
     }
 
-    private fun startHeartbeat() {
-        val handler = Handler(Looper.getMainLooper())
-        handler.post(object : Runnable {
-            override fun run() {
-                Log.d("FRIDAY", "SENTINEL HEARTBEAT: ACTIVE")
-                handler.postDelayed(this, 10000) // Every 10s
-            }
-        })
-    }
-
     private fun initInternalRecognizer() {
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            Log.e("FRIDAY", "System Speech Engine Unavailable")
-            return
-        }
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) return
         internalRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
         internalRecognizer?.setRecognitionListener(object : RecognitionListener {
             override fun onResults(results: Bundle?) {
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 matches?.get(0)?.let { 
-                    Log.d("FRIDAY", "Voice Input Captured: $it")
-                    viewModel.sendMessage(it, this@MainActivity, tts, fuzzyMatcher, networkForge) 
+                    viewModel.sendMessage(it, this@MainActivity) 
                 }
             }
             override fun onError(error: Int) {
-                Log.d("FRIDAY", "Stealth Recognizer Error Code: $error")
                 if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) internalRecognizer?.cancel()
             }
-            override fun onReadyForSpeech(params: Bundle?) { Log.d("FRIDAY", "Mic Listening...") }
+            override fun onReadyForSpeech(params: Bundle?) {}
             override fun onBeginningOfSpeech() {}
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() { Log.d("FRIDAY", "Mic Closed.") }
+            override fun onEndOfSpeech() {}
             override fun onPartialResults(partialResults: Bundle?) {}
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
     }
 
     private fun checkPermissions() {
-        val permissions = mutableListOf<String>(
+        val permissions = mutableListOf(
             Manifest.permission.RECORD_AUDIO,
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.READ_CONTACTS,
@@ -129,7 +107,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startVoiceInput() {
-        Log.d("FRIDAY", "Activating Stealth Listener Engine")
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-IN")
@@ -138,8 +115,7 @@ class MainActivity : ComponentActivity() {
             internalRecognizer?.startListening(intent)
             val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
             vibrator.vibrate(VibrationEffect.createOneShot(50, 100))
-        } catch (e: Exception) {
-            Log.e("FRIDAY", "Voice Engine Engagement Failure: ${e.message}")
+        } catch (_: Exception) {
             Toast.makeText(this, "Stealth Engine Error", Toast.LENGTH_SHORT).show()
         }
     }
@@ -148,20 +124,13 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
         unregisterReceiver(wakeReceiver)
         internalRecognizer?.destroy()
-        Log.d("FRIDAY", "Core Shutdown sequence complete.")
     }
 }
 
 @Composable
-fun FridayHud(
-    viewModel: MainViewModel, 
-    tts: EdgeTtsManager, 
-    forge: NetworkForge, 
-    fuzzy: FuzzyMatcher,
-    onMicClick: () -> Unit,
-) {
+fun FridayHud(viewModel: MainViewModel, onMicClick: () -> Unit) {
     val context = LocalContext.current
-    var isSentinelActive by remember { mutableStateOf(value = false) }
+    var isSentinelActive by remember { mutableStateOf(false) }
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     
@@ -182,37 +151,11 @@ fun FridayHud(
 
     val hudColor = if (batteryLevel < 15) Color.Red else Color(0xFF00FFFF)
 
-    val infiniteTransition = rememberInfiniteTransition()
-    val pulse by infiniteTransition.animateFloat(
-        initialValue = 1f, targetValue = 1.15f,
-        animationSpec = infiniteRepeatable(tween(1200), RepeatMode.Reverse),
-    )
-    
-    val rotation by infiniteTransition.animateFloat(
-        initialValue = 0f, targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(5000, easing = LinearEasing), RepeatMode.Restart),
-    )
-
-    LaunchedEffect(viewModel.messages.size) {
-        if (viewModel.messages.isNotEmpty()) {
-            listState.animateScrollToItem(viewModel.messages.size - 1)
-        }
-    }
-
     Scaffold(
         containerColor = Color(0xFF000505),
         bottomBar = {
             Column {
                 HorizontalDivider(color = hudColor.copy(alpha = 0.1f))
-                
-                viewModel.pendingAction?.let { action ->
-                    MissionConfirmation(
-                        action = action["action"].toString(),
-                        hudColor = hudColor,
-                        onConfirm = { viewModel.sendMessage("Yes", context, tts, fuzzy, forge) },
-                    ) { viewModel.sendMessage("Abort", context, tts, fuzzy, forge) }
-                }
-
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -254,7 +197,7 @@ fun FridayHud(
                     IconButton(
                         onClick = { 
                             if (inputText.isNotBlank()) {
-                                viewModel.sendMessage(inputText, context, tts, fuzzy, forge)
+                                viewModel.sendMessage(inputText, context)
                                 inputText = ""
                             }
                         },
@@ -280,16 +223,7 @@ fun FridayHud(
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 contentAlignment = Alignment.Center,
             ) {
-                SentientCore(pulse, rotation, hudColor)
-                if (viewModel.isLoading.collectAsState().value) {
-                    Text(
-                        "ANALYZING...",
-                        modifier = Modifier.align(Alignment.Center).padding(top = 160.dp),
-                        color = Color.Green,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+                SentientOrb(hudColor, viewModel.isLoading.collectAsState().value)
                 Text(
                     "FRIDAY MARK VII",
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 20.dp),
@@ -313,25 +247,6 @@ fun FridayHud(
 }
 
 @Composable
-fun MissionConfirmation(action: String, hudColor: Color, onConfirm: () -> Unit, onAbort: () -> Unit) {
-    Surface(
-        color = hudColor.copy(alpha = 0.1f),
-        modifier = Modifier.fillMaxWidth().padding(16.dp).border(1.dp, hudColor, RoundedCornerShape(4.dp)),
-    ) {
-        Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("MISSION AUTHORIZATION: $action", color = hudColor, fontSize = 10.sp, fontWeight = FontWeight.Black)
-            Spacer(modifier = Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
-                TextButton(onClick = onAbort) { Text("ABORT", color = Color.Red, fontWeight = FontWeight.Bold) }
-                Button(onClick = onConfirm, colors = ButtonDefaults.buttonColors(containerColor = hudColor)) {
-                    Text("ENGAGE", color = Color.Black, fontWeight = FontWeight.ExtraBold)
-                }
-            }
-        }
-    }
-}
-
-@Composable
 fun HudTag(text: String, hudColor: Color) {
     Surface(
         color = hudColor.copy(alpha = 0.1f),
@@ -343,39 +258,79 @@ fun HudTag(text: String, hudColor: Color) {
 }
 
 @Composable
-fun SentientCore(scale: Float, rotation: Float, hudColor: Color) {
-    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(200.dp)) {
-        Canvas(modifier = Modifier.size(180.dp).graphicsLayer(rotationZ = rotation)) {
+fun SentientOrb(hudColor: Color, isLoading: Boolean) {
+    val infiniteTransition = rememberInfiniteTransition()
+    val pulse by infiniteTransition.animateFloat(
+        initialValue = 0.9f, targetValue = 1.1f,
+        animationSpec = infiniteRepeatable(tween(1500), RepeatMode.Reverse),
+    )
+    
+    val rotation by infiniteTransition.animateFloat(
+        initialValue = 0f, targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(8000, easing = LinearEasing), RepeatMode.Restart),
+    )
+
+    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(250.dp)) {
+        // Outer Holographic Rings
+        Canvas(modifier = Modifier.size(220.dp).graphicsLayer(rotationZ = rotation)) {
             drawCircle(
-                color = hudColor.copy(alpha = 0.3f),
-                style = Stroke(width = 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(20f, 20f))),
+                color = hudColor.copy(alpha = 0.2f),
+                style = Stroke(width = 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(30f, 30f))),
             )
         }
         
-        Canvas(modifier = Modifier.size(150.dp).graphicsLayer(rotationZ = -rotation * 1.5f)) {
+        Canvas(modifier = Modifier.size(190.dp).graphicsLayer(rotationZ = -rotation * 1.2f)) {
             drawCircle(
-                color = hudColor.copy(alpha = 0.5f),
-                style = Stroke(width = 2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 30f))),
+                color = hudColor.copy(alpha = 0.4f),
+                style = Stroke(width = 2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(15f, 40f))),
             )
         }
 
-        val transition = rememberInfiniteTransition()
-        val blobScale by transition.animateFloat(
-            initialValue = 0.8f, targetValue = 1.2f,
-            animationSpec = infiniteRepeatable(tween(2000), RepeatMode.Reverse)
-        )
-
+        // Glassmorphism Orb
         Surface(
-            modifier = Modifier.size(80.dp).graphicsLayer(scaleX = scale * blobScale, scaleY = scale * blobScale).blur(20.dp),
+            modifier = Modifier.size(120.dp).graphicsLayer(scaleX = pulse, scaleY = pulse).blur(if (isLoading) 30.dp else 10.dp),
             shape = CircleShape,
-            color = hudColor.copy(alpha = 0.4f)
+            color = hudColor.copy(alpha = if (isLoading) 0.6f else 0.3f),
+            border = BorderStroke(1.dp, hudColor.copy(alpha = 0.5f))
         ) {}
 
-        Canvas(modifier = Modifier.size(60.dp).graphicsLayer(scaleX = scale, scaleY = scale)) {
+        // Central Core
+        Canvas(modifier = Modifier.size(60.dp)) {
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(hudColor, hudColor.copy(alpha = 0.2f), Color.Transparent),
+                    colors = listOf(hudColor, hudColor.copy(alpha = 0.5f), Color.Transparent),
                 )
+            )
+        }
+        
+        if (isLoading) {
+            WaveformAnimation(hudColor)
+        }
+    }
+}
+
+@Composable
+fun WaveformAnimation(hudColor: Color) {
+    val infiniteTransition = rememberInfiniteTransition()
+    
+    Row(
+        modifier = Modifier.width(100.dp).height(40.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        repeat(5) { index ->
+            val heightScale by infiniteTransition.animateFloat(
+                initialValue = 0.2f, targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    tween(400 + (index * 100), easing = FastOutSlowInEasing), 
+                    RepeatMode.Reverse
+                ),
+            )
+            Box(
+                modifier = Modifier
+                    .width(4.dp)
+                    .fillMaxHeight(heightScale)
+                    .background(hudColor, RoundedCornerShape(2.dp))
             )
         }
     }
