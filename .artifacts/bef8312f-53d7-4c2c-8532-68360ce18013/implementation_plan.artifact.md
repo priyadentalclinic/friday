@@ -1,35 +1,29 @@
-# FRIDAY Mark VII - Gemma 4 "Future-Proof" Core & Vocal Fallback
+# FRIDAY Mark VII - Mission Stability Patch (Vocal & Satellite Recovery)
 
-This plan integrates the specialized **Gemma 4 26B/31B** models into the OpenRouter uplink and adds a critical **Vocal Fallback** engine to ensure FRIDAY never stays silent again.
+This plan fixes the "429 Rate Limit" satellite error and the "Silent Fallback" issue by expanding the model pool and correcting the native voice engine.
 
 ## User Review Required
 
 > [!IMPORTANT]
-> **Model IDs**: I am adding `google/gemma-4-26b-it:free` and `google/gemma-4-31b-it:free` as the EXCLUSIVE reasoning models for FRIDAY.
-> **Vocal Failover**: I am implementing a "Hybrid Voice" system. If the Microsoft Edge voice server is busy or blocked (401 error), FRIDAY will **automatically** switch to your Android phone's built-in voice. You will hear her no matter what.
-> **Satellite 404 Fix**: I've confirmed that adding a legitimate `Referer` header is required for these specific high-capacity free models.
+> **Rate Limit Recovery**: The Gemma 4 core was being rate-limited by the upstream provider. I am adding **Gemma 2 27B** and **Gemma 2 9B** as fallbacks. If the top-tier core is busy, she will automatically drop down to the next best brain to ensure a reply.
+> **Silent Fallback Fix**: I found a bug in her "Backup Mouth." She was trying to use the phone voice but the signal was getting lost. I am fixing the `speakNative` logic to ensure she speaks audibly when the internet voice fails.
 
 ## Proposed Changes
 
-### 1. Future-Dated Brain Uplink
+### 1. Expanded Satellite Intelligence
 #### [MODIFY] [MainViewModel.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/MainViewModel.kt)
-- **Exclusion Logic**: Set FRIDAY to only talk to the requested Gemma 4 models.
-- **Header Fortification**:
-  - `Referer`: `https://friday-ai.com`
-  - `X-Title`: `FRIDAY OS`
-  - `Content-Type`: `application/json`
-- **Uplink Recovery**: Added a 15-second auto-timeout to stop the "Glow" if the satellite link fails.
+- **Multi-Model Pool**: Updated the model list to: `google/gemma-4-31b-it:free,google/gemma-4-26b-it:free,google/gemma-2-27b-it:free,google/gemma-2-9b-it:free`.
+- This ensures that if the new "Gemma 4" is busy, she immediately tries "Gemma 2" instead of giving a Satellite Error.
 
-### 2. The "Never-Silent" Voice Engine
+### 2. Auditable Vocal Fallback
 #### [MODIFY] [EdgeTtsManager.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/voice/EdgeTtsManager.kt)
-- **Android TTS Integration**: Added `android.speech.tts.TextToSpeech` as a local backup.
-- **Failover Logic**: If the WebSocket handshake fails, her "Offline Mouth" engages instantly.
-- **Initial Boot Check**: When the app starts, she will now speak a "Systems online, Boss" message to verify her voice is active.
+- **Protocol Fix**: Removed the `TrustedClientToken` from the Edge URL. Microsoft has moved to a header-only verification; keeping the old token was causing the `401 Unauthorized` block.
+- **Native Signal Fix**: Fixed the `speakNative` function to properly use the Android `Handler` to trigger completions.
+- **Volume Guard**: Explicitly set the engine to use the `STREAM_MUSIC` channel for maximum clarity.
 
-### 3. Permission & UI Guard
+### 3. Debug Handshake
 #### [MODIFY] [MainActivity.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/MainActivity.kt)
-- Ensure the Android TTS engine is initialized on startup.
-- Add status text in the HUD: **SATELLITE: GEMMA 4**.
+- Added a "System Pulse" log. When you press the Mic, she will now log `MISSION_START` so we can track exactly where the signal drops.
 
 ## Verification Plan
 
@@ -37,9 +31,9 @@ This plan integrates the specialized **Gemma 4 26B/31B** models into the OpenRou
 - Build verification via GitHub Actions.
 
 ### Manual Verification
-1. **Startup Proof**: Open the app. She should say "Systems online, Boss."
-2. **Uplink Test**: Ask "Who are you?". Verify the response comes from the Gemma 4 core.
-3. **Voice Fail-Test**: Disable internet and ask a question. Verify she still speaks using the local system voice.
+1. **The "Voice Check"**: Open the app. She should say "Systems online, Boss" using either the internet voice or the native fallback.
+2. **The "Gemma Test"**: Ask "Who are you?". Even if Gemma 4 is busy, you should get a reply from the pool.
+3. **Connectivity Reset**: If you see "Satellite link broken," try again after 5 seconds to let the pool refresh.
 
 ---
-**Boss, I am ready to link her to the Gemma 4 core and give her a permanent mouth. Shall I deploy?**
+**Boss, the satellite link was getting congested and her backup mouth was misconfigured. I am ready to apply the Final Stability Patch.**

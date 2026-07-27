@@ -29,7 +29,6 @@ class MainViewModel : ViewModel() {
     private val gson = Gson()
     private val OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
     
-    // User key provided
     private val P1 = "sk-or-v1-b15ee5fb74b2fcc8e9a8b13ae2fd9072c60d29c"
     private val P2 = "909578c381ef524f60f8796be"
     private val OPENROUTER_API_KEY = P1 + P2
@@ -43,12 +42,13 @@ class MainViewModel : ViewModel() {
     fun initCoordinator(context: Context) {
         if (coordinator == null) {
             coordinator = CoordinatorAgent(context)
-            coordinator?.speak("Systems online, Boss.")
+            postMsg("assistant", "Systems online, Boss.")
         }
     }
 
     fun sendMessage(text: String, context: Context) {
         if (text.isBlank()) return
+        Log.d("FRIDAY", "Mission Initiated: $text")
         
         val mission = Mission(query = text)
         messages.add(mapOf("role" to "user", "content" to text))
@@ -60,13 +60,12 @@ class MainViewModel : ViewModel() {
 
     private fun runCloudInference(text: String, mission: Mission) {
         viewModelScope.launch(Dispatchers.IO) {
-            // Using future-tier Gemma 4 models
-            val modelId = "google/gemma-4-31b-it:free"
-            val fallbackModelId = "google/gemma-4-26b-it:free"
+            // Expanded model pool to bypass upstream rate limits (429)
+            val models = "google/gemma-4-31b-it:free,google/gemma-4-26b-it:free,google/gemma-2-27b-it:free,google/gemma-2-9b-it:free"
             
             val systemPrompt = "You are FRIDAY, a professional AI partner. Respond in Hinglish. ALWAYS address the user as Boss. Format: [Confirmation] {json command}"
             val payload = mapOf(
-                "model" to "$modelId,$fallbackModelId",
+                "model" to models,
                 "messages" to listOf(
                     mapOf("role" to "system", "content" to systemPrompt),
                     mapOf("role" to "user", "content" to text)
@@ -86,6 +85,7 @@ class MainViewModel : ViewModel() {
             client.newCall(request).enqueue(object : Callback {
                 override fun onFailure(call: Call, e: IOException) {
                     viewModelScope.launch(Dispatchers.Main) { _isLoading.value = false }
+                    Log.e("FRIDAY", "Satellite Connection Failure: ${e.message}")
                     postMsg("assistant", "Satellite link broken, Boss.")
                 }
 
@@ -101,11 +101,13 @@ class MainViewModel : ViewModel() {
                             val content = message["content"] as String
                             handleAIOutput(content, mission)
                         } catch (e: Exception) {
+                            Log.e("FRIDAY", "Data Parsing Error: ${e.message}")
                             postMsg("assistant", "Data corrupted in transit.")
                         }
                     } else {
                         Log.e("FRIDAY", "Satellite Error: ${response.code} - $respBody")
-                        postMsg("assistant", "Satellite uplink rejected. Status: ${response.code}")
+                        val errorReason = if (response.code == 429) "Cores congested." else "Uplink rejected (Code: ${response.code})"
+                        postMsg("assistant", "$errorReason Please standby, Boss.")
                     }
                 }
             })

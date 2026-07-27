@@ -107,6 +107,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startVoiceInput() {
+        Log.d("FRIDAY", "MISSION_START: Voice Engine Engaging")
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-IN")

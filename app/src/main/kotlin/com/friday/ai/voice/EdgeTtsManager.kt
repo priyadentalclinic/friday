@@ -1,7 +1,11 @@
 package com.friday.ai.voice
 
 import android.content.Context
+import android.media.AudioAttributes
+import android.media.AudioManager
 import android.media.MediaPlayer
+import android.os.Handler
+import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import okhttp3.*
@@ -13,7 +17,8 @@ import java.nio.ByteOrder
 
 class EdgeTtsManager(private val context: Context) : TextToSpeech.OnInitListener {
     private val client = OkHttpClient()
-    private val EDGE_URL = "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=6A5AA1D4EAFF4E9787D7E05195A4F334"
+    // Protocol Update: Removed TrustedClientToken which was causing 401 Unauthorized
+    private val EDGE_URL = "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1"
     
     private val mediaPlayers = LinkedList<MediaPlayer>()
     private var isPlaying = false
@@ -26,9 +31,9 @@ class EdgeTtsManager(private val context: Context) : TextToSpeech.OnInitListener
 
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
-            nativeTts?.language = Locale("hi", "IN")
+            nativeTts?.language = Locale("en", "IN")
             isNativeTtsReady = true
-            Log.d("FRIDAY", "Native TTS Engine Initialized.")
+            Log.d("FRIDAY", "Native TTS Engine Ready.")
         }
     }
 
@@ -52,7 +57,7 @@ class EdgeTtsManager(private val context: Context) : TextToSpeech.OnInitListener
                         playSegments(segmentFiles, onDone)
                     }
                 } else {
-                    Log.e("FRIDAY", "Edge TTS failed for segment. Engaging Native Fallback.")
+                    Log.e("FRIDAY", "Edge TTS unavailable. engaging native voice fallback.")
                     speakNative(segments, onDone)
                 }
             }
@@ -104,7 +109,7 @@ class EdgeTtsManager(private val context: Context) : TextToSpeech.OnInitListener
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                Log.e("FRIDAY", "Edge TTS Failure: ${t.message}")
+                Log.e("FRIDAY", "TTS Connection Error: ${t.message}")
                 try { outStream.close() } catch(_: Exception) {}
                 onComplete(false)
             }
@@ -127,8 +132,15 @@ class EdgeTtsManager(private val context: Context) : TextToSpeech.OnInitListener
             val file = queue.poll()
             try {
                 val mp = MediaPlayer().apply {
+                    setAudioAttributes(AudioAttributes.Builder()
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                        .build())
                     setDataSource(file?.absolutePath)
-                    setOnErrorListener { _, _, _ -> release(); playNext(); true }
+                    setOnErrorListener { _, what, extra -> 
+                        Log.e("FRIDAY", "Media Error $what/$extra")
+                        release(); playNext(); true 
+                    }
                     setOnCompletionListener { release(); playNext() }
                     prepare()
                     start()
@@ -144,10 +156,12 @@ class EdgeTtsManager(private val context: Context) : TextToSpeech.OnInitListener
     }
 
     private fun speakNative(segments: List<VoiceSegment>, onDone: () -> Unit) {
-        if (!isNativeTtsReady) return
+        if (!isNativeTtsReady) {
+            onDone()
+            return
+        }
         segments.forEach { nativeTts?.speak(it.text, TextToSpeech.QUEUE_ADD, null, it.text) }
-        // Simple delay to simulate completion since native TTS callbacks are complex with queueing
-        context.mainLooper.run { onDone() }
+        Handler(Looper.getMainLooper()).postDelayed({ onDone() }, 2000)
     }
 
     fun stop() {
