@@ -1,5 +1,6 @@
 package com.friday.ai
 
+import android.Manifest
 import android.content.*
 import android.os.*
 import android.speech.*
@@ -105,7 +106,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun checkPermissions() {
-        val permissions = mutableListOf(
+        val permissions = mutableListOf<String>(
             Manifest.permission.RECORD_AUDIO,
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.READ_CONTACTS,
