@@ -43,6 +43,7 @@ class MainViewModel : ViewModel() {
     }
 
     fun sendMessage(text: String, context: Context, tts: EdgeTtsManager, fuzzy: FuzzyMatcher, forge: NetworkForge) {
+        Log.d("FRIDAY", "Processing Mission: $text")
         if (text.isBlank()) return
         
         // Confirmation handling
@@ -59,6 +60,11 @@ class MainViewModel : ViewModel() {
 
         messages.add(mapOf("role" to "user", "content" to text))
         _isLoading.value = true
+        
+        // Immediate Feedback
+        if (text.length > 5 && !text.contains("yes", true)) {
+            Log.d("FRIDAY", "Engagement protocol initiated: Reasoning...")
+        }
 
         val isSimple = text.length < 25
         val hasInternet = isNetworkAvailable(context)

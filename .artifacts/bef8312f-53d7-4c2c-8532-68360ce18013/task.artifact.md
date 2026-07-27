@@ -1,15 +1,15 @@
-# Task: FRIDAY Mission Stability & HUD Refinement
+# Task: FRIDAY Mark VII - Stealth Recovery
 
-- `[ ]` **Phase 1: Brain & Connectivity**
-    - `[ ]` Update `MainViewModel.kt` with the provided OpenRouter API Key.
-    - `[ ]` Update `build.yml` to fetch the correct `.tflite` model format.
-    - `[ ]` Refine `LocalBrain.kt` for TFLite engine compatibility.
-- `[ ]` **Phase 2: Sentinel Recovery**
-    - `[ ]` Stabilize `SentinelService.kt` with a 500ms restart delay.
-    - `[ ]` Implement robust error handling for voice recognition loops.
-- `[ ]` **Phase 3: HUD Visual Refinement**
-    - `[ ]` Remove Green/Process colors from `MainActivity.kt`.
-    - `[ ]` Standardize HUD to `Tactical Blue` (Normal) and `Emergency Red` (Critical).
-- `[ ]` **Phase 4: Deployment**
-    - `[ ]` Push fixes to GitHub.
-    - `[ ]` Final walkthrough.
+- `[/]` **Phase 1: Stealth Speech Engine**
+    - `[ ]` Implement internal `SpeechRecognizer` in `MainActivity.kt`.
+    - `[ ]` Remove Intent-based `speechLauncher`.
+    - `[ ]` Connect Sentinel wake-broadcast to Stealth Engine.
+- `[ ]` **Phase 2: Verified Model Injection**
+    - `[ ]` Update `build.yml` with direct model link.
+    - `[ ]` Add model size verification step to build pipeline.
+- `[ ]` **Phase 3: Logic & Feedback**
+    - `[ ]` Add "Thinking..." HUD indicator.
+    - `[ ]` Ensure TTS responds if model loading is delayed.
+- `[ ]` **Phase 4: Deployment & Validation**
+    - `[ ]` Push to GitHub and monitor build.
+    - `[ ]` Verify model size on device via adb.

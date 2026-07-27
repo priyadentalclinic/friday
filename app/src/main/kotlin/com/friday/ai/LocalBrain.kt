@@ -31,9 +31,10 @@ class LocalBrain(private val context: Context) {
             engine = Engine(config).apply { initialize() }
             conversation = engine?.createConversation()
             isReady = true
-            Log.d("FRIDAY", "Local Supercomputer Brain Synced.")
+            Log.d("FRIDAY", "Local Supercomputer Brain Synced and Operational.")
         } catch (e: Exception) {
-            Log.e("FRIDAY", "Brain Sync Failure: ${e.message}")
+            Log.e("FRIDAY", "CRITICAL: Brain Sync Failure. Check model file integrity. Error: ${e.message}")
+            e.printStackTrace()
         }
     }
 

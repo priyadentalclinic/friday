@@ -45,28 +45,20 @@ class MainActivity : ComponentActivity() {
     private lateinit var tts: EdgeTtsManager
     private val fuzzyMatcher = FuzzyMatcher()
     private val networkForge by lazy { NetworkForge(this) }
-    private lateinit var speechLauncher: ActivityResultLauncher<Intent>
+    private var internalRecognizer: SpeechRecognizer? = null
 
     private val wakeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            Log.d("FRIDAY", "Activity Wake Event Detected")
-            startVoiceInput()
+            Log.d("FRIDAY", "Stealth Engine Engagement Detected")
+            runOnUiThread { startVoiceInput() }
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         tts = EdgeTtsManager(this)
-
-        speechLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            if (result.resultCode == RESULT_OK) {
-                val data = result.data
-                val results = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-                results?.get(0)?.let { viewModel.sendMessage(it, this, tts, fuzzyMatcher, networkForge) }
-            }
-        }
+        initInternalRecognizer()
         
-        // Copy Local Brain from Assets to Internal Storage (The Sentinel Slim Path)
         copyBrainFromAssets()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -120,15 +112,46 @@ class MainActivity : ComponentActivity() {
         requestPermissions(permissions.toTypedArray(), 101)
     }
 
+    private fun initInternalRecognizer() {
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) return
+        internalRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
+        internalRecognizer?.setRecognitionListener(object : RecognitionListener {
+            override fun onResults(results: Bundle?) {
+                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                matches?.get(0)?.let { 
+                    viewModel.sendMessage(it, this@MainActivity, tts, fuzzyMatcher, networkForge) 
+                }
+            }
+            override fun onError(error: Int) {
+                Log.d("FRIDAY", "Stealth Recognizer Error: $error")
+                if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) internalRecognizer?.cancel()
+            }
+            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {}
+            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+    }
+
     private fun startVoiceInput() {
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-IN")
         }
         try {
-            speechLauncher.launch(intent)
+            internalRecognizer?.startListening(intent)
+            // Tactical Haptic Confirmation
+            val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createOneShot(50, 100))
+            } else {
+                vibrator.vibrate(50)
+            }
         } catch (_: Exception) {
-            Toast.makeText(this, "Speech Engine Error", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Stealth Engine Error", Toast.LENGTH_SHORT).show()
         }
     }
 

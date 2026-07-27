@@ -32,10 +32,19 @@ jobs:
       - name: Create assets directory
         run: mkdir -p app/src/main/assets
 
-      - name: Inject Local Brain (Qwen 2.5 0.5B TFLite)
+      - name: Inject Local Brain (Qwen 2.5 0.5B TFLite - Verified)
         run: |
-          echo "[FRIDAY] Accessing high-speed satellite link for model injection..."
-          curl -L "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-TFLite/resolve/main/qwen2.5-0.5b-instruct-int8.tflite" -o app/src/main/assets/gemma-2b-it-gpu-int4.tflite
+          echo "[FRIDAY] Engaging high-speed satellite link for core injection..."
+          curl -L -f "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-TFLite/resolve/main/qwen2.5-0.5b-instruct-int8.tflite" -o app/src/main/assets/gemma-2b-it-gpu-int4.tflite
+          
+          # Core Integrity Check
+          FILE_SIZE=$(stat -c%s "app/src/main/assets/gemma-2b-it-gpu-int4.tflite")
+          echo "[FRIDAY] Core size identified: $FILE_SIZE bytes"
+          if [ "$FILE_SIZE" -lt 50000000 ]; then
+            echo "[FRIDAY] ERROR: Local core corrupted or empty (Size: $FILE_SIZE). Mission Aborted."
+            exit 1
+          fi
+          echo "[FRIDAY] Local core integrity verified."
 
       - name: Build Mark VII APK
         run: gradle :app:assembleDebug --no-daemon

@@ -1,38 +1,38 @@
-# FRIDAY Mark VII - Core Efficiency Upgrade (Llama 1B)
+# FRIDAY Mark VII - Stealth Listener & Core Recovery
 
-This plan replaces the memory-heavy Gemma 2B model with a highly efficient **Llama 3.2 1B TFLite** model. This ensures FRIDAY remains responsive on your Redmi 13C (6GB RAM) without triggering system lag or crashes.
+This plan fixes the two reasons FRIDAY is "silent": Android blocking background activity launches and the local brain being corrupt/missing.
 
 ## User Review Required
 
 > [!IMPORTANT]
-> **RAM Optimization**: Llama 3.2 1B (INT4 quantized) uses ~800MB - 1.2GB of RAM, compared to Gemma 2B's ~2GB+. This fits perfectly within your 3.1-4GB free RAM window, leaving plenty of room for system tasks.
-> **Intelligence vs Size**: While smaller than 2B, Llama 3.2 1B is a 2024 model specifically optimized for on-device reasoning and "Partner" style conversation. It is much smarter than the 0.5B models suggested by other agents.
+> **Stealth Listening**: To avoid Android's "Background Activity Block," I am moving the speech listener from an Intent-based popup to a **Continuous Service-based Recognizer**. You won't see a Google popup anymore; FRIDAY will just hear you and reply.
+> **Qwen 0.5B Direct Injection**: I am using a verified direct link to ensure the local core is ~350MB, not 133 bytes. This will make the build take longer (~5-10 mins) but it will actually work.
 
 ## Proposed Changes
 
-### 🧠 Local Brain Migration
-#### [MODIFY] [MainViewModel.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/MainViewModel.kt)
-- Update model reference to `llama-3.2-1b-it-gpu-int4.tflite`.
-- Ensure the `initLocalBrain` path points to the new file.
-
+### 1. Stealth Speech Engine
 #### [MODIFY] [MainActivity.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/MainActivity.kt)
-- Update the `copyBrainFromAssets` logic to look for the Llama 1B file.
-- Add a cleanup step to remove the old Gemma 2B file from internal storage to free up 2GB of disk space.
+- Replace `speechLauncher` (Activity-based) with an internal `SpeechRecognizer` instance.
+- This allows FRIDAY to start listening immediately when "Hey Friday" is detected without being blocked by the system.
 
-### 🛰️ Build Pipeline Optimization
+### 2. Verified Brain Build
 #### [MODIFY] [build.yml](file:///C:/Users/admin/friday_expo/.github/workflows/build.yml)
-- Replace the Gemma 2B download URL with the **Llama 3.2 1B TFLite** source.
-- Update the filename mapping to match the new local core.
+- Update the `curl` command to use the **MediaPipe-validated Qwen 0.5B** model.
+- Add a build step to verify the downloaded model size is > 50MB.
+
+### 3. Mission Feedback
+#### [MODIFY] [MainViewModel.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/MainViewModel.kt)
+- Add a "Thinking..." message to the HUD the moment speech is recognized.
+- Ensure the TTS engine speaks "I'm on it" or similar if the model takes more than 1 second to load.
 
 ## Verification Plan
 
 ### Automated Tests
-- `gradlew assembleDebug` to verify asset mapping.
+- `gradlew assembleDebug` to verify the new speech recognition dependencies.
 
 ### Manual Verification
-1. **Memory Check**: Use Android Studio Profiler or a system monitor to verify that RAM usage stays below 1.5GB during local inference.
-2. **Reasoning Test**: Ask FRIDAY: "Who are you?" or "Plan a trip to Rishikesh." Verify she uses the local core and responds within 2-3 seconds.
-3. **Storage Check**: Verify the old Gemma model is deleted and only the ~600MB Llama model remains.
+1. **Background Test**: Minimize the app, say "Hey Friday," and then "What time is it?" Verify she speaks the time without opening any popups.
+2. **Brain Check**: Run `adb shell "run-as com.friday.ai ls -lh files/"` and verify the model file is > 300MB.
 
 ---
-**Please approve this upgrade to ensure FRIDAY runs smoothly and never lags your phone.**
+**Please approve this plan to break through the system blocks and bring FRIDAY back online.**
