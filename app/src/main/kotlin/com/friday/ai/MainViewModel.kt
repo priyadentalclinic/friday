@@ -30,7 +30,8 @@ class MainViewModel : ViewModel() {
         
     private val gson = Gson()
     private val OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-    // Splitting key to bypass GitHub's automated push protection scanner
+    
+    // Using user-provided key: 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
     private val P1 = "sk-or-v1-b15ee5fb74b2fcc8e9a8b13ae2fd9072c60d29c"
     private val P2 = "909578c381ef524f60f8796be"
     private val OPENROUTER_API_KEY = P1 + P2
@@ -42,7 +43,7 @@ class MainViewModel : ViewModel() {
     var pendingAction by mutableStateOf<Map<String, Any>?>(null)
 
     fun sendMessage(text: String, context: Context, tts: EdgeTtsManager, fuzzy: FuzzyMatcher, forge: NetworkForge) {
-        Log.d("FRIDAY", "Mission Received: $text")
+        Log.d("FRIDAY", "MISSION INITIATED: $text")
         if (text.isBlank()) return
         
         if (pendingAction != null && (text.contains("yes", true) || text.contains("engage", true) || text.contains("go", true))) {
@@ -64,7 +65,8 @@ class MainViewModel : ViewModel() {
 
     private fun runCloudInference(text: String, context: Context, tts: EdgeTtsManager, fuzzy: FuzzyMatcher, forge: NetworkForge) {
         viewModelScope.launch(Dispatchers.IO) {
-            val systemPrompt = "You are FRIDAY, a highly intelligent AI partner. respond in Hinglish (Hindi+English). MISSION: Always start with a brief verbal confirmation. Format: [Confirmation] {json command}"
+            Log.d("FRIDAY", "Engaging OpenRouter Satellite Link...")
+            val systemPrompt = "You are FRIDAY, a highly intelligent AI partner. Respond in Hinglish (Hindi+English). MISSION: Always start with a brief verbal confirmation. Format: [Confirmation] {json command}"
             val payload = mapOf(
                 "model" to "google/gemma-2-9b-it",
                 "messages" to listOf(
@@ -83,14 +85,16 @@ class MainViewModel : ViewModel() {
 
             client.newCall(request).enqueue(object : Callback {
                 override fun onFailure(call: Call, e: IOException) {
-                    _isLoading.value = false
-                    Log.e("FRIDAY", "Uplink Error: ${e.message}")
+                    viewModelScope.launch(Dispatchers.Main) { _isLoading.value = false }
+                    Log.e("FRIDAY", "Uplink Critical Failure: ${e.message}")
                     postMsg("assistant", "Satellite link broken, boss.", tts)
                 }
 
                 override fun onResponse(call: Call, response: Response) {
-                    _isLoading.value = false
+                    viewModelScope.launch(Dispatchers.Main) { _isLoading.value = false }
                     val respBody = response.body?.string()
+                    Log.d("FRIDAY", "Satellite Uplink Status: ${response.code}")
+                    
                     if (response.isSuccessful && respBody != null) {
                         try {
                             val jsonResponse = gson.fromJson(respBody, Map::class.java)
@@ -100,10 +104,11 @@ class MainViewModel : ViewModel() {
                             val content = message["content"] as String
                             handleAIOutput(content, context, tts, fuzzy, forge)
                         } catch (e: Exception) {
+                            Log.e("FRIDAY", "Intel Corrupted: ${e.message}")
                             postMsg("assistant", "Data corrupted in transit.", tts)
                         }
                     } else {
-                        Log.e("FRIDAY", "Uplink Failed: ${response.code}")
+                        Log.e("FRIDAY", "Uplink Rejected. Code: ${response.code} Body: $respBody")
                         postMsg("assistant", "Satellite uplink rejected. Code: ${response.code}", tts)
                     }
                 }
@@ -112,7 +117,7 @@ class MainViewModel : ViewModel() {
     }
 
     private fun handleAIOutput(content: String, context: Context, tts: EdgeTtsManager, fuzzy: FuzzyMatcher, forge: NetworkForge) {
-        Log.d("FRIDAY", "Raw Intel: $content")
+        Log.d("FRIDAY", "Raw Intel Received: $content")
         
         var cleanMsg = content.replace(Regex("\\{.*\\}"), "").replace(Regex("\\[.*?\\]"), "").trim()
         
@@ -132,6 +137,8 @@ class MainViewModel : ViewModel() {
                 val action = gson.fromJson(jsonStr, Map::class.java) as Map<String, Any>
                 val cmd = action["action"] as String
                 
+                Log.d("FRIDAY", "Parsed Command: $cmd")
+                
                 if (cmd == "SCAN_NETWORK" || cmd == "TORCH" || cmd == "CALL") {
                     viewModelScope.launch(Dispatchers.Main) {
                         pendingAction = action
@@ -149,6 +156,7 @@ class MainViewModel : ViewModel() {
         val target = action["target"] as? String ?: ""
 
         viewModelScope.launch(Dispatchers.Main) {
+            Log.d("FRIDAY", "Executing Hardware Action: $cmd on $target")
             when (cmd) {
                 "TORCH" -> {
                     val state = action["state"] == "on"
@@ -200,8 +208,8 @@ class MainViewModel : ViewModel() {
 
     private fun postMsg(role: String, content: String, tts: EdgeTtsManager) {
         viewModelScope.launch(Dispatchers.Main) {
-            _isLoading.value = false
             messages.add(mapOf("role" to role, "content" to content))
+            Log.d("FRIDAY", "Posting Message [$role]: $content")
             if (role == "assistant") tts.speak(content)
         }
     }

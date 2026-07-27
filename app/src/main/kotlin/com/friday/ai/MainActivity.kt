@@ -56,43 +56,60 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.d("FRIDAY", "Mark VII Core Initializing...")
         tts = EdgeTtsManager(this)
         initInternalRecognizer()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(wakeReceiver, IntentFilter("com.friday.ai.WAKE_WORD_DETECTED"), RECEIVER_EXPORTED)
+            registerReceiver(wakeReceiver, IntentFilter("com.friday.ai.WAKE_WORD_DETECTED"), Context.RECEIVER_EXPORTED)
         } else {
             ContextCompat.registerReceiver(this, wakeReceiver, IntentFilter("com.friday.ai.WAKE_WORD_DETECTED"), ContextCompat.RECEIVER_EXPORTED)
         }
         
         checkPermissions()
+        startHeartbeat()
 
         setContent {
+            Log.d("FRIDAY", "HUD Interface Rendering...")
             FridayHud(viewModel, tts, networkForge, fuzzyMatcher) {
                 startVoiceInput()
             }
         }
     }
 
+    private fun startHeartbeat() {
+        val handler = Handler(Looper.getMainLooper())
+        handler.post(object : Runnable {
+            override fun run() {
+                Log.d("FRIDAY", "SENTINEL HEARTBEAT: ACTIVE")
+                handler.postDelayed(this, 10000) // Every 10s
+            }
+        })
+    }
+
     private fun initInternalRecognizer() {
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) return
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            Log.e("FRIDAY", "System Speech Engine Unavailable")
+            return
+        }
         internalRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
         internalRecognizer?.setRecognitionListener(object : RecognitionListener {
             override fun onResults(results: Bundle?) {
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 matches?.get(0)?.let { 
+                    Log.d("FRIDAY", "Voice Input Captured: $it")
                     viewModel.sendMessage(it, this@MainActivity, tts, fuzzyMatcher, networkForge) 
                 }
             }
             override fun onError(error: Int) {
-                Log.d("FRIDAY", "Stealth Recognizer Error: $error")
+                Log.d("FRIDAY", "Stealth Recognizer Error Code: $error")
                 if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) internalRecognizer?.cancel()
             }
-            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onReadyForSpeech(params: Bundle?) { Log.d("FRIDAY", "Mic Listening...") }
             override fun onBeginningOfSpeech() {}
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() {}
+            override fun onEndOfSpeech() { Log.d("FRIDAY", "Mic Closed.") }
             override fun onPartialResults(partialResults: Bundle?) {}
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
@@ -112,6 +129,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startVoiceInput() {
+        Log.d("FRIDAY", "Activating Stealth Listener Engine")
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-IN")
@@ -120,7 +138,8 @@ class MainActivity : ComponentActivity() {
             internalRecognizer?.startListening(intent)
             val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
             vibrator.vibrate(VibrationEffect.createOneShot(50, 100))
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.e("FRIDAY", "Voice Engine Engagement Failure: ${e.message}")
             Toast.makeText(this, "Stealth Engine Error", Toast.LENGTH_SHORT).show()
         }
     }
@@ -129,6 +148,7 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
         unregisterReceiver(wakeReceiver)
         internalRecognizer?.destroy()
+        Log.d("FRIDAY", "Core Shutdown sequence complete.")
     }
 }
 
@@ -261,6 +281,15 @@ fun FridayHud(
                 contentAlignment = Alignment.Center,
             ) {
                 SentientCore(pulse, rotation, hudColor)
+                if (viewModel.isLoading.collectAsState().value) {
+                    Text(
+                        "ANALYZING...",
+                        modifier = Modifier.align(Alignment.Center).padding(top = 160.dp),
+                        color = Color.Green,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 Text(
                     "FRIDAY MARK VII",
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 20.dp),
