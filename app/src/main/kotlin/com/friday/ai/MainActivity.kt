@@ -79,6 +79,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun copyBrainFromAssets() {
+        // Cleanup old large models
+        listOf("gemma-2b-it-gpu-int4.tflite", "qwen2.5-0.5b-instruct-int8.tflite", "llama-3.2-1b-instruct-q4_k_m.gguf")
+            .forEach { java.io.File(filesDir, it).delete() }
+
         val modelName = "llama-3.2-1b.tflite"
         val targetFile = java.io.File(filesDir, modelName)
         if (targetFile.exists()) return
