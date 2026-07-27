@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.core.content.ContextCompat
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -58,9 +59,10 @@ class MainActivity : ComponentActivity() {
         copyBrainFromAssets()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(wakeReceiver, IntentFilter("com.friday.ai.WAKE_WORD_DETECTED"), RECEIVER_EXPORTED)
+            registerReceiver(wakeReceiver, IntentFilter("com.friday.ai.WAKE_WORD_DETECTED"), Context.RECEIVER_EXPORTED)
         } else {
-            registerReceiver(wakeReceiver, IntentFilter("com.friday.ai.WAKE_WORD_DETECTED"))
+            // Added explicit RECEIVER_EXPORTED for older versions to satisfy modern SDK requirements
+            ContextCompat.registerReceiver(this, wakeReceiver, IntentFilter("com.friday.ai.WAKE_WORD_DETECTED"), ContextCompat.RECEIVER_EXPORTED)
         }
         
         checkPermissions()
@@ -128,6 +130,19 @@ class MainActivity : ComponentActivity() {
         unregisterReceiver(wakeReceiver)
         viewModel.localBrain?.close()
     }
+}
+
+@androidx.compose.ui.tooling.preview.Preview(showBackground = true, backgroundColor = 0xFF000505)
+@Composable
+fun FridayHudPreview() {
+    val viewModel = MainViewModel()
+    FridayHud(
+        viewModel = viewModel,
+        tts = EdgeTtsManager(androidx.compose.ui.platform.LocalContext.current),
+        forge = NetworkForge(androidx.compose.ui.platform.LocalContext.current),
+        fuzzy = FuzzyMatcher(),
+        onMicClick = {}
+    )
 }
 
 @Composable
