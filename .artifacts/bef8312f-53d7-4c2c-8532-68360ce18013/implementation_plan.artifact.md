@@ -1,37 +1,45 @@
-# FRIDAY Mark VII - Llama Core Integration
+# FRIDAY Mark VII - Cloud-First reasoning (OpenRouter)
 
-This plan replaces the failing Qwen download with a verified **Llama 3.2 1B TFLite** model. This is a larger but more powerful model that fits the "Partner" persona perfectly.
+This plan pivots FRIDAY to a cloud-first architecture, removing the heavy local brain and relying entirely on the **OpenRouter API** for reasoning. This will make the app extremely small (~20MB) and much more reliable for initial testing.
 
 ## User Review Required
 
-> [!WARNING]
-> **APK Size**: Llama 1B is approximately **1.2GB - 2.1GB** depending on quantization. This will result in a much larger APK download than the previous versions.
-> **Memory Usage**: On your 6GB RAM device, this will consume ~1.5GB of RAM. Since you have ~3GB free, this is safe but will push the hardware harder than Qwen.
+> [!IMPORTANT]
+> **API Key Safety**: I will ensure your OpenRouter API key is securely handled in the code.
+> **Internet Mandatory**: Since we are removing the local brain, FRIDAY will require an active internet connection to "think" or "speak."
+> **Model Selection**: I will set the default model to **Gemma 2 9B** (via OpenRouter) as it is excellent at Hinglish and very fast.
 
 ## Proposed Changes
 
-### 1. Build Pipeline (Llama 1B Verified)
-#### [MODIFY] [build.yml](file:///C:/Users/admin/friday_expo/.github/workflows/build.yml)
-- Switch the download source to **Llama 3.2 1B TFLite**.
-- URL: `https://huggingface.co/vimal-yuvabe/llama-3.2-1b-tflite/resolve/main/llama-3.2-1b-q8.tflite`
-- Asset name: `llama-3.2-1b.tflite`.
-
-### 2. MainActivity Brain Injection
-#### [MODIFY] [MainActivity.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/MainActivity.kt)
-- Update `copyBrainFromAssets` to look for `llama-3.2-1b.tflite`.
-
-### 3. Logic Sync
+### 1. Simplify Brain Logic
 #### [MODIFY] [MainViewModel.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/MainViewModel.kt)
-- Update `initLocalBrain` to use the new Llama filename.
+- Remove all `LocalBrain` references and the `initLocalBrain` function.
+- Simplify `sendMessage` to always route through `runCloudInference`.
+- Fortify `runCloudInference` with better timeout handling and mandatory verbal confirmation.
+
+### 2. Cleanup & De-bloat
+#### [MODIFY] [MainActivity.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/MainActivity.kt)
+- Remove `copyBrainFromAssets` logic.
+- Update the HUD tags to show **BRAIN: CLOUD** permanently.
+
+#### [MODIFY] [build.yml](file:///C:/Users/admin/friday_expo/.github/workflows/build.yml)
+- Remove the "Inject Local Brain" steps.
+- The build will now be fast (under 2 minutes) and the APK will be tiny (~20MB).
+
+### 3. Voice & Personality
+#### [MODIFY] [MainViewModel.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/MainViewModel.kt)
+- Update the System Prompt to be even more "Partner-like" since we have the cloud's full power:
+  - *"You are FRIDAY, a loyal AI partner. mission-ready. Respond in a mix of English and Hindi (Hinglish). If a command is triggered, explain what you are doing naturally."*
 
 ## Verification Plan
 
 ### Automated Tests
-- Monitor GitHub Actions for build success. I have added `-f` to `curl` so the build will fail immediately if the URL is wrong again, rather than giving you a broken APK.
+- `gradlew assembleDebug` to ensure no orphaned local-brain references.
 
 ### Manual Verification
-1. **Model Check**: Once installed, verify the HUD shows "LOCAL" for the brain.
-2. **Conversation**: Say "Hey Friday, tell me a mission report." Verify she speaks back using the local Llama core.
+1. **Connectivity Test**: Type "How's the weather in Delhi?" Verify the cloud response appears in text and voice.
+2. **Command Test**: Type "Call Disha." Verify she says "Connecting you to Disha now" and opens the dialer.
+3. **APK Size Check**: Confirm the APK is small and installs instantly.
 
 ---
-**Please approve to switch the brain to Llama 1B and fix the download errors.**
+**Please approve this shift to Cloud-First mode to get FRIDAY talking immediately.**

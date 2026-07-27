@@ -32,20 +32,6 @@ jobs:
       - name: Create assets directory
         run: mkdir -p app/src/main/assets
 
-      - name: Inject Local Brain (Llama 3.2 1B q4 TFLite - Slim)
-        run: |
-          echo "[FRIDAY] Engaging high-speed satellite link for Llama Slim core injection..."
-          curl -L -f "https://huggingface.co/google/llama-3.2-1b-instruct-tflite/resolve/main/llama-3.2-1b-instruct-q4.tflite" -o app/src/main/assets/llama-3.2-1b.tflite
-          
-          # Core Integrity Check
-          FILE_SIZE=$(stat -c%s "app/src/main/assets/llama-3.2-1b.tflite")
-          echo "[FRIDAY] Core size identified: $FILE_SIZE bytes"
-          if [ "$FILE_SIZE" -lt 600000000 ]; then
-            echo "[FRIDAY] ERROR: Llama core corrupted or truncated. Mission Aborted."
-            exit 1
-          fi
-          echo "[FRIDAY] Llama Slim core integrity verified."
-
       - name: Build Mark VII APK
         run: gradle :app:assembleDebug --no-daemon
         env:

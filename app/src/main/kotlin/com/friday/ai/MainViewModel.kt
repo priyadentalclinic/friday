@@ -19,82 +19,49 @@ import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
-import java.io.File
+import java.util.concurrent.TimeUnit
 
 class MainViewModel : ViewModel() {
-    private val client = OkHttpClient()
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .writeTimeout(15, TimeUnit.SECONDS)
+        .build()
+        
     private val gson = Gson()
     private val OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-    private val OPENROUTER_API_KEY = "sk-or-v1-3004838634731383827363473138382736"
+    private val OPENROUTER_API_KEY = "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"
 
     val messages = mutableStateListOf<Map<String, String>>()
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
     
-    var localBrain: LocalBrain? = null
     var pendingAction by mutableStateOf<Map<String, Any>?>(null)
 
-    fun initLocalBrain(context: Context) {
-        viewModelScope.launch {
-            val modelPath = File(context.filesDir, "llama-3.2-1b.tflite").absolutePath
-            localBrain = LocalBrain(context)
-            localBrain?.initialize(modelPath)
-        }
-    }
-
     fun sendMessage(text: String, context: Context, tts: EdgeTtsManager, fuzzy: FuzzyMatcher, forge: NetworkForge) {
-        Log.d("FRIDAY", "Processing Mission: $text")
+        Log.d("FRIDAY", "Mission Received: $text")
         if (text.isBlank()) return
         
-        // Confirmation handling
-        if (pendingAction != null && (text.contains("yes", true) || text.contains("initiate", true) || text.contains("go", true))) {
+        if (pendingAction != null && (text.contains("yes", true) || text.contains("engage", true) || text.contains("go", true))) {
             val action = pendingAction!!
             pendingAction = null
             executeHardwareAction(action, context, tts, fuzzy, forge)
             return
         } else if (pendingAction != null) {
             pendingAction = null
-            postMsg("assistant", "Mission aborted, boss.", tts)
+            postMsg("assistant", "Protocol aborted, boss.", tts)
             return
         }
 
         messages.add(mapOf("role" to "user", "content" to text))
         _isLoading.value = true
         
-        // Immediate Feedback
-        if (text.length > 5 && !text.contains("yes", true)) {
-            Log.d("FRIDAY", "Engagement protocol initiated: Reasoning...")
-        }
-
-        val isSimple = text.length < 25
-        val hasInternet = isNetworkAvailable(context)
-
-        if (!hasInternet || (isSimple && localBrain?.isReady == true)) {
-            runLocalInference(text, tts, context, fuzzy, forge)
-        } else {
-            runCloudInference(text, context, tts, fuzzy, forge)
-        }
-    }
-
-    private fun runLocalInference(text: String, tts: EdgeTtsManager, context: Context, fuzzy: FuzzyMatcher, forge: NetworkForge) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val prompt = "User: $text\nFRIDAY:"
-            val responseFlow = localBrain?.generateResponse(prompt)
-            if (responseFlow != null) {
-                var fullResponse = ""
-                responseFlow.collect { token ->
-                    fullResponse += token
-                }
-                handleAIOutput(fullResponse, context, tts, fuzzy, forge)
-            } else {
-                postMsg("assistant", "Local core failure. Re-sync required.", tts)
-            }
-        }
+        runCloudInference(text, context, tts, fuzzy, forge)
     }
 
     private fun runCloudInference(text: String, context: Context, tts: EdgeTtsManager, fuzzy: FuzzyMatcher, forge: NetworkForge) {
         viewModelScope.launch(Dispatchers.IO) {
-            val systemPrompt = "You are FRIDAY, a highly intelligent AI partner. mission-ready, loyal, and proactive. Respond in a mix of English and Hindi (Hinglish). Keep replies concise but cinematic. ALWAYS provide a verbal confirmation before commands. Commands: NAVIGATE, CALL, WHATSAPP, TORCH. Format: [Confirmation] {json}"
+            val systemPrompt = "You are FRIDAY, a highly intelligent AI partner. respond in Hinglish (Hindi+English). MISSION: Always start with a brief verbal confirmation. Format: [Confirmation] {json command}"
             val payload = mapOf(
                 "model" to "google/gemma-2-9b-it",
                 "messages" to listOf(
@@ -107,15 +74,19 @@ class MainViewModel : ViewModel() {
             val request = Request.Builder()
                 .url(OPENROUTER_URL)
                 .addHeader("Authorization", "Bearer $OPENROUTER_API_KEY")
+                .addHeader("X-Title", "FRIDAY AI")
                 .post(body)
                 .build()
 
             client.newCall(request).enqueue(object : Callback {
                 override fun onFailure(call: Call, e: IOException) {
+                    _isLoading.value = false
+                    Log.e("FRIDAY", "Uplink Error: ${e.message}")
                     postMsg("assistant", "Satellite link broken, boss.", tts)
                 }
 
                 override fun onResponse(call: Call, response: Response) {
+                    _isLoading.value = false
                     val respBody = response.body?.string()
                     if (response.isSuccessful && respBody != null) {
                         try {
@@ -126,11 +97,11 @@ class MainViewModel : ViewModel() {
                             val content = message["content"] as String
                             handleAIOutput(content, context, tts, fuzzy, forge)
                         } catch (e: Exception) {
-                            postMsg("assistant", "Decryption failed. Data corrupted.", tts)
+                            postMsg("assistant", "Data corrupted in transit.", tts)
                         }
                     } else {
-                        val code = response.code
-                        postMsg("assistant", "Satellite uplink failed. Status Code: $code", tts)
+                        Log.e("FRIDAY", "Uplink Failed: ${response.code}")
+                        postMsg("assistant", "Satellite uplink rejected. Code: ${response.code}", tts)
                     }
                 }
             })
@@ -138,8 +109,9 @@ class MainViewModel : ViewModel() {
     }
 
     private fun handleAIOutput(content: String, context: Context, tts: EdgeTtsManager, fuzzy: FuzzyMatcher, forge: NetworkForge) {
-        Log.d("FRIDAY", "Satellite Response: $content")
-        var cleanMsg = content.replace(Regex("\\{.*\\}"), "").replace(Regex("\\[MODE:.*?\\]"), "").trim()
+        Log.d("FRIDAY", "Raw Intel: $content")
+        
+        var cleanMsg = content.replace(Regex("\\{.*\\}"), "").replace(Regex("\\[.*?\\]"), "").trim()
         
         if (cleanMsg.isBlank() && content.contains("{")) {
             cleanMsg = "Engagement protocol initiated, boss."
@@ -147,6 +119,8 @@ class MainViewModel : ViewModel() {
         
         if (cleanMsg.isNotBlank()) {
             postMsg("assistant", cleanMsg, tts)
+        } else {
+            postMsg("assistant", "Intelligence unclear. Repeating analysis...", tts)
         }
 
         val jsonMatch = Regex("\\{.*\\}").find(content)
@@ -155,16 +129,15 @@ class MainViewModel : ViewModel() {
                 val action = gson.fromJson(jsonStr, Map::class.java) as Map<String, Any>
                 val cmd = action["action"] as String
                 
-                // Permission gating for sensitive actions
                 if (cmd == "SCAN_NETWORK" || cmd == "TORCH" || cmd == "CALL") {
                     viewModelScope.launch(Dispatchers.Main) {
                         pendingAction = action
-                        tts.speak("Boss, mission target is $cmd. Risk analyzed. Shall I engage?")
+                        tts.speak("Boss, target is $cmd. Shall I engage?")
                     }
                 } else {
                     executeHardwareAction(action, context, tts, fuzzy, forge)
                 }
-            } catch (e: Exception) { Log.e("FRIDAY", "Action Error: ${e.message}") }
+            } catch (e: Exception) { Log.e("FRIDAY", "Parsing Error: ${e.message}") }
         }
     }
 
@@ -180,14 +153,14 @@ class MainViewModel : ViewModel() {
                     try {
                         val cameraId = hardware.cameraIdList[0]
                         hardware.setTorchMode(cameraId, state)
-                        tts.speak("Torch ${if(state) "active" else "dark"}, boss.")
-                    } catch (e: Exception) { postMsg("assistant", "Hardware lock on torch, boss.", tts) }
+                        tts.speak("Torch ${if(state) "active" else "offline"}, boss.")
+                    } catch (e: Exception) { postMsg("assistant", "Hardware lock on torch.", tts) }
                 }
                 "SCAN_NETWORK" -> {
-                    postMsg("assistant", "Forging into local network...", tts)
+                    postMsg("assistant", "Forging into network...", tts)
                     viewModelScope.launch(Dispatchers.IO) {
                         val nodes = forge.auditNetwork()
-                        postMsg("assistant", "Audit complete. Found ${nodes.size} nodes on grid: ${nodes.joinToString(", ")}", tts)
+                        postMsg("assistant", "Audit complete. Found ${nodes.size} nodes.", tts)
                     }
                 }
                 "CALL" -> {
@@ -198,7 +171,7 @@ class MainViewModel : ViewModel() {
                             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             context.startActivity(intent)
                         }
-                    } else postMsg("assistant", "Target not in secure contacts, boss.", tts)
+                    } else postMsg("assistant", "Target not found in secure contacts.", tts)
                 }
                 "WHATSAPP" -> {
                     val contact = fuzzy.findBestContact(context, target)
@@ -228,10 +201,5 @@ class MainViewModel : ViewModel() {
             messages.add(mapOf("role" to role, "content" to content))
             if (role == "assistant") tts.speak(content)
         }
-    }
-
-    private fun isNetworkAvailable(context: Context): Boolean {
-        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-        return cm.activeNetwork != null
     }
 }

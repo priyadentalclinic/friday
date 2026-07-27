@@ -58,62 +58,20 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         tts = EdgeTtsManager(this)
         initInternalRecognizer()
-        
-        copyBrainFromAssets()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(wakeReceiver, IntentFilter("com.friday.ai.WAKE_WORD_DETECTED"), RECEIVER_EXPORTED)
         } else {
-            // Added explicit RECEIVER_EXPORTED for older versions to satisfy modern SDK requirements
             ContextCompat.registerReceiver(this, wakeReceiver, IntentFilter("com.friday.ai.WAKE_WORD_DETECTED"), ContextCompat.RECEIVER_EXPORTED)
         }
         
         checkPermissions()
-        viewModel.initLocalBrain(this)
 
         setContent {
             FridayHud(viewModel, tts, networkForge, fuzzyMatcher) {
                 startVoiceInput()
             }
         }
-    }
-
-    private fun copyBrainFromAssets() {
-        // Cleanup old large models
-        listOf("gemma-2b-it-gpu-int4.tflite", "qwen2.5-0.5b-instruct-int8.tflite", "llama-3.2-1b-instruct-q4_k_m.gguf")
-            .forEach { java.io.File(filesDir, it).delete() }
-
-        val modelName = "llama-3.2-1b.tflite"
-        val targetFile = java.io.File(filesDir, modelName)
-        if (targetFile.exists()) return
-
-        Thread {
-            try {
-                assets.open(modelName).use { input ->
-                    val size = assets.openFd(modelName).length
-                    Log.d("FRIDAY", "Injecting Brain. Asset Size: $size bytes")
-                    java.io.FileOutputStream(targetFile).use { output ->
-                        input.copyTo(output)
-                    }
-                }
-                Log.d("FRIDAY", "Local Brain Injected Successfully.")
-            } catch (_: Exception) {
-                Log.e("FRIDAY", "Brain Injection Failed")
-            }
-        }.start()
-    }
-
-    private fun checkPermissions() {
-        val permissions = mutableListOf<String>(
-            Manifest.permission.RECORD_AUDIO,
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.READ_CONTACTS,
-            Manifest.permission.CAMERA,
-        )
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
-        }
-        requestPermissions(permissions.toTypedArray(), 101)
     }
 
     private fun initInternalRecognizer() {
@@ -140,6 +98,19 @@ class MainActivity : ComponentActivity() {
         })
     }
 
+    private fun checkPermissions() {
+        val permissions = mutableListOf<String>(
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.READ_CONTACTS,
+            Manifest.permission.CAMERA,
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        requestPermissions(permissions.toTypedArray(), 101)
+    }
+
     private fun startVoiceInput() {
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -147,13 +118,8 @@ class MainActivity : ComponentActivity() {
         }
         try {
             internalRecognizer?.startListening(intent)
-            // Tactical Haptic Confirmation
             val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createOneShot(50, 100))
-            } else {
-                vibrator.vibrate(50)
-            }
+            vibrator.vibrate(VibrationEffect.createOneShot(50, 100))
         } catch (_: Exception) {
             Toast.makeText(this, "Stealth Engine Error", Toast.LENGTH_SHORT).show()
         }
@@ -162,20 +128,8 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         unregisterReceiver(wakeReceiver)
-        viewModel.localBrain?.close()
+        internalRecognizer?.destroy()
     }
-}
-
-@androidx.compose.ui.tooling.preview.Preview(showBackground = true, backgroundColor = 0xFF000505)
-@Composable
-fun FridayHudPreview() {
-    val viewModel = MainViewModel()
-    FridayHud(
-        viewModel = viewModel,
-        tts = EdgeTtsManager(LocalContext.current),
-        forge = NetworkForge(LocalContext.current),
-        fuzzy = FuzzyMatcher(),
-    ) { }
 }
 
 @Composable
@@ -191,7 +145,6 @@ fun FridayHud(
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     
-    // Telemetry States
     var batteryLevel by remember { mutableIntStateOf(0) }
     var temperature by remember { mutableFloatStateOf(0f) }
 
@@ -232,7 +185,6 @@ fun FridayHud(
             Column {
                 HorizontalDivider(color = hudColor.copy(alpha = 0.1f))
                 
-                // Permission Card (Tony Stark Style)
                 viewModel.pendingAction?.let { action ->
                     MissionConfirmation(
                         action = action["action"].toString(),
@@ -299,7 +251,7 @@ fun FridayHud(
                 horizontalArrangement = Arrangement.Center,
             ) {
                 HudTag("CORE: ACTIVE", hudColor)
-                HudTag("BRAIN: ${if(viewModel.localBrain?.isReady == true) "LOCAL" else "CLOUD"}", hudColor)
+                HudTag("BRAIN: CLOUD", hudColor)
                 HudTag("BATTERY: $batteryLevel%", hudColor)
                 HudTag("TEMP: ${temperature}°C", hudColor)
             }
@@ -364,7 +316,6 @@ fun HudTag(text: String, hudColor: Color) {
 @Composable
 fun SentientCore(scale: Float, rotation: Float, hudColor: Color) {
     Box(contentAlignment = Alignment.Center, modifier = Modifier.size(200.dp)) {
-        // Outer Rings
         Canvas(modifier = Modifier.size(180.dp).graphicsLayer(rotationZ = rotation)) {
             drawCircle(
                 color = hudColor.copy(alpha = 0.3f),
@@ -379,7 +330,6 @@ fun SentientCore(scale: Float, rotation: Float, hudColor: Color) {
             )
         }
 
-        // Inner Sentient Blob (Amoeba style)
         val transition = rememberInfiniteTransition()
         val blobScale by transition.animateFloat(
             initialValue = 0.8f, targetValue = 1.2f,
