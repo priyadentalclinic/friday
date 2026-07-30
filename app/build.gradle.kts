@@ -1,17 +1,18 @@
 plugins {
     id("com.android.application")
+    id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
     namespace = "com.friday.ai"
-    compileSdk = 35
+    compileSdk = 34
 
     defaultConfig {
         applicationId = "com.friday.ai"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 34
         versionCode = 1
         versionName = "1.0.0"
 
@@ -34,7 +35,6 @@ android {
     }
 
     buildFeatures {
-        compose = true
         buildConfig = true
     }
     androidResources {
@@ -78,7 +78,7 @@ dependencies {
     implementation("com.google.mlkit:language-id:17.0.6")
     
     // Persistence (Memory Agent)
-    val roomVersion = "2.6.1"
+    val roomVersion = "2.6.2"
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
     ksp("androidx.room:room-compiler:$roomVersion")

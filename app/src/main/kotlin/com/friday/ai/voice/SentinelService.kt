@@ -13,12 +13,19 @@ class SentinelService : Service() {
     private var speechRecognizer: SpeechRecognizer? = null
     private var recognizerIntent: Intent? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var consecutiveErrors = 0
+    private val maxErrorsBeforeStop = 10
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
 
     override fun onCreate() {
         super.onCreate()
         Log.d("FRIDAY", "Sentinel Core Active")
         
-        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+        if (powerManager == null) {
+            Log.e("FRIDAY", "PowerManager not available")
+            return
+        }
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "FRIDAY::SentinelShield")
         wakeLock?.acquire()
 
@@ -40,6 +47,7 @@ class SentinelService : Service() {
 
         speechRecognizer?.setRecognitionListener(object : RecognitionListener {
             override fun onResults(results: Bundle?) {
+                consecutiveErrors = 0
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 matches?.forEach {
                     val spoken = it.lowercase(Locale.ROOT)
@@ -51,6 +59,7 @@ class SentinelService : Service() {
             }
 
             override fun onPartialResults(partialResults: Bundle?) {
+                consecutiveErrors = 0
                 val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 matches?.forEach {
                     val spoken = it.lowercase(Locale.ROOT)
@@ -62,10 +71,17 @@ class SentinelService : Service() {
 
             override fun onError(error: Int) {
                 Log.d("FRIDAY", "Recognizer Error: $error")
+                consecutiveErrors++
+                if (consecutiveErrors >= maxErrorsBeforeStop) {
+                    Log.e("FRIDAY", "Too many consecutive errors — stopping Sentinel")
+                    stopSelf()
+                    return
+                }
                 if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
                     speechRecognizer?.cancel()
                 }
-                restartListening()
+                val delay = minOf(500L shl consecutiveErrors.coerceAtMost(5), 30000L)
+                handler.postDelayed({ restartListening() }, delay)
             }
 
             override fun onReadyForSpeech(params: Bundle?) {}
@@ -80,10 +96,12 @@ class SentinelService : Service() {
     }
 
     private fun restartListening() {
-        Handler(Looper.getMainLooper()).postDelayed({
+        handler.postDelayed({
             try {
+                wakeLock?.release()
                 speechRecognizer?.stopListening()
                 speechRecognizer?.startListening(recognizerIntent)
+                wakeLock?.acquire()
             } catch (e: Exception) {
                 Log.e("FRIDAY", "Restart Error: ${e.message}")
             }
@@ -94,8 +112,8 @@ class SentinelService : Service() {
         val intent = Intent("com.friday.ai.WAKE_WORD_DETECTED")
         sendBroadcast(intent)
         
-        val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-        vibrator.vibrate(VibrationEffect.createOneShot(150, 180))
+        val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+        vibrator?.vibrate(VibrationEffect.createOneShot(150, 180))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -123,8 +141,11 @@ class SentinelService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        handler.removeCallbacksAndMessages(null)
         speechRecognizer?.destroy()
+        speechRecognizer = null
         wakeLock?.release()
+        wakeLock = null
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

@@ -2,11 +2,11 @@ package com.friday.ai
 
 import android.Manifest
 import android.content.*
+import android.content.pm.PackageManager
 import android.os.*
 import android.speech.*
 import android.util.Log
 import android.widget.Toast
-import android.os.BatteryManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -42,6 +42,7 @@ import com.friday.ai.voice.SentinelService
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
     private var internalRecognizer: SpeechRecognizer? = null
+    private val grantedPermissions = mutableSetOf<String>()
 
     private val wakeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -52,7 +53,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        viewModel.initCoordinator(this)
+        viewModel.initCoordinator(application)
         initInternalRecognizer()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -77,7 +78,7 @@ class MainActivity : ComponentActivity() {
             override fun onResults(results: Bundle?) {
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 matches?.get(0)?.let { 
-                    viewModel.sendMessage(it, this@MainActivity) 
+                    viewModel.sendMessage(it) 
                 }
             }
             override fun onError(error: Int) {
@@ -106,6 +107,17 @@ class MainActivity : ComponentActivity() {
         requestPermissions(permissions.toTypedArray(), 101)
     }
 
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 101) {
+            permissions.forEachIndexed { index, perm ->
+                if (grantResults[index] == PackageManager.PERMISSION_GRANTED) {
+                    grantedPermissions.add(perm)
+                }
+            }
+        }
+    }
+
     private fun startVoiceInput() {
         Log.d("FRIDAY", "MISSION_START: Voice Engine Engaging")
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -114,8 +126,8 @@ class MainActivity : ComponentActivity() {
         }
         try {
             internalRecognizer?.startListening(intent)
-            val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-            vibrator.vibrate(VibrationEffect.createOneShot(50, 100))
+            val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+            vibrator?.vibrate(VibrationEffect.createOneShot(50, 100))
         } catch (_: Exception) {
             Toast.makeText(this, "Stealth Engine Error", Toast.LENGTH_SHORT).show()
         }
@@ -137,6 +149,7 @@ fun FridayHud(viewModel: MainViewModel, onMicClick: () -> Unit) {
     
     var batteryLevel by remember { mutableIntStateOf(0) }
     var temperature by remember { mutableFloatStateOf(0f) }
+    val isLoading by viewModel.isLoading.collectAsState()
 
     DisposableEffect(context) {
         val receiver = object : BroadcastReceiver() {
@@ -146,7 +159,11 @@ fun FridayHud(viewModel: MainViewModel, onMicClick: () -> Unit) {
                 if (tempRaw != -1) temperature = tempRaw / 10f
             }
         }
-        context.registerReceiver(receiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(receiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED), Context.RECEIVER_EXPORTED)
+        } else {
+            context.registerReceiver(receiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        }
         onDispose { context.unregisterReceiver(receiver) }
     }
 
@@ -162,11 +179,16 @@ fun FridayHud(viewModel: MainViewModel, onMicClick: () -> Unit) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     IconButton(
-                        onClick = { 
+                        onClick = {
                             isSentinelActive = !isSentinelActive
                             val intent = Intent(context, SentinelService::class.java)
-                            if (isSentinelActive) context.startForegroundService(intent)
-                            else context.stopService(intent)
+                            if (isSentinelActive) {
+                                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                                    ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+                                ) {
+                                    context.startForegroundService(intent)
+                                }
+                            } else context.stopService(intent)
                         },
                     ) {
                         Icon(
@@ -198,7 +220,7 @@ fun FridayHud(viewModel: MainViewModel, onMicClick: () -> Unit) {
                     IconButton(
                         onClick = { 
                             if (inputText.isNotBlank()) {
-                                viewModel.sendMessage(inputText, context)
+                                viewModel.sendMessage(inputText)
                                 inputText = ""
                             }
                         },
@@ -224,7 +246,7 @@ fun FridayHud(viewModel: MainViewModel, onMicClick: () -> Unit) {
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 contentAlignment = Alignment.Center,
             ) {
-                SentientOrb(hudColor, viewModel.isLoading.collectAsState().value)
+                SentientOrb(hudColor, isLoading)
                 Text(
                     "FRIDAY MARK VII",
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 20.dp),

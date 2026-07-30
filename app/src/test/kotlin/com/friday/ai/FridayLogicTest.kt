@@ -1,5 +1,6 @@
 package com.friday.ai
 
+import com.friday.ai.friday.FuzzyMatcher
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -13,7 +14,7 @@ class FridayLogicTest {
         val score = fuzzyMatcher.calculateDiceCoefficient("mummy", "mom")
         // Bigrams mummy: mu, um, mm, my
         // Bigrams mom: mo, om
-        assertTrue("Mummy should have some match with Mom", score >= 0.0)
+        assertTrue("Mummy should have some match with Mom", score > 0.0)
     }
 
     @Test

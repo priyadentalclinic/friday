@@ -1,0 +1,66 @@
+see i just wanna build friday which is close and close and close to movie level friday,that is my goal.
+12:21 PM
+I've reviewed your app's codebase, and you actually have a fantastic foundation! You've got the beautiful holographic UI, battery/temperature monitoring, background wake-word detection, and OpenRouter LLM integration.
+
+To take this to "movie level," we need to turn FRIDAY from a chatbot that just talks, into a smart agent that does things (like turning on your flashlight, sending messages, opening apps) and knows things (like the time, location, and battery status).
+
+I've put together an Implementation Plan artifact that outlines exactly how we can add this Action Execution Engine and Context Awareness. Please review the plan, especially the "Open Questions" section, and let me know how you'd like to proceed!
+
+Implementation Plan
+12:21 PM
+yes i want to add microsoft tts neerja voice,which has underatanding of hindi,english and hinglish all 3 languages,and it should reply in hinglish or english only.in 2nd all of the actions that you listed and much more than that,like openng app,checking notification,placing call,,opening chat on whatsapp of specific person or contact i say,and if by chance i get a message from sister like what are you doing,so friday should ask me that boss this is messaage from this ,you are currently busy in coding,shall i reply,i am busy and contact you later??this level friday i want,if i am driving mom texts,when will you come home so it should read and ask that this message from this,i checked your eta it will take 29 minutes,what ,shall i reply her,its 29 minutes traffic jam?i want this level friday literally.
+12:27 PM
+That is exactly the level of intelligence we want! To achieve this, FRIDAY needs to move from a foreground app to a background powerhouse that hooks deeply into the Android OS.
+
+I have updated the Implementation Plan artifact. It now includes:
+
+Microsoft Azure TTS Integration for the "Neerja" neural voice.
+FridayNotificationService to intercept WhatsApp and SMS messages.
+Context Engine to track your location and speed to know when you're driving, and calculate ETAs.
+Action Engine to place calls and reply to messages via Android Intents.
+Please review the updated plan. There are two critical open questions regarding API keys for Azure Speech and Google Maps. Let me know if you have these keys, and if you approve of this architecture so we can start writing the code!.........................................................................................................Goal: Movie-Level FRIDAY Assistant
+The goal is to build an extremely advanced, proactive, context-aware AI assistant on Android that mimics the capabilities of FRIDAY from the movies.
+
+User Review Required
+CAUTION
+
+This level of integration requires highly privileged Android permissions.
+
+You will need to manually grant Notification Access to the app in Android settings so it can read incoming WhatsApp messages.
+You will need to grant Call Phone and Accessibility/App-Overlays for deep app integrations.
+Open Questions
+WARNING
+
+We need API keys for these advanced features:
+
+Microsoft Azure Speech Services: To use the "Neerja" neural voice (en-IN/hi-IN) we need an Azure subscription key and region. Do you have one?
+Google Maps API: To calculate ETA when driving, we need a Maps API key. Do you have one?
+Proposed Changes
+We will introduce a highly capable Proactive Action Engine, a Notification Interceptor, and Azure TTS.
+
+1. Microsoft Azure TTS Integration
+[NEW] com/friday/ai/voice/AzureTTS.kt
+Integrate the Azure Speech REST API.
+Configure the voice parameter to en-IN-NeerjaNeural or hi-IN-SwaraNeural to support English, Hindi, and Hinglish natively.
+2. Proactive Notification Interceptor
+[NEW] com/friday/ai/core/FridayNotificationService.kt
+Extend NotificationListenerService.
+Listen for incoming notifications (specifically com.whatsapp or SMS).
+Extract the sender and message body.
+Pass this to the MainViewModel to trigger a proactive LLM evaluation.
+3. Context & State Engine (Driving & ETA)
+[NEW] com/friday/ai/core/ContextEngine.kt
+Track device speed using Location Services to determine if the user is DRIVING.
+If a message arrives from "Mom" while DRIVING, the ContextEngine queries the Google Maps Directions API to get the ETA to Home.
+It injects this into the LLM Prompt: “User is driving. ETA to Home is 29 mins. Received WhatsApp from Mom: 'When will you come home?'. Ask the user if they want to reply with the ETA.”
+4. Action Execution Engine (Deep Intents)
+[NEW] com/friday/ai/core/ActionExecutor.kt
+Parse JSON actions from the LLM (e.g., {"action": "WHATSAPP_REPLY", "contact": "Mom", "message": "I will be there in 29 mins, stuck in traffic."}).
+Call placing: Use Intent.ACTION_CALL.
+Opening WhatsApp: Use Intent.ACTION_SEND targeting the WhatsApp package.
+Opening Apps: Resolve package names and launch intents.
+Verification Plan
+Manual Verification
+TTS Check: Ask FRIDAY a question and verify it speaks back using the Microsoft Neerja voice in Hinglish.
+Action Check: Say "Call [Contact]" and verify the phone dialer opens and initiates a call.
+Proactive Check: Simulate driving (using a mock location app or physically moving). Send a WhatsApp message to the phone. Verify FRIDAY intercepts the message, calculates the ETA, and asks out loud: "Boss, Mom is asking when you will come home. Your ETA is 29 minutes. Shall I reply that you are stuck in traffic?"

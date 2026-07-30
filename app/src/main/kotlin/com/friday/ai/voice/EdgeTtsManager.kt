@@ -13,14 +13,19 @@ import okio.ByteString
 import java.io.File
 import java.io.FileOutputStream
 import java.util.*
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.nio.ByteOrder
 
 class EdgeTtsManager(private val context: Context) : TextToSpeech.OnInitListener {
-    private val client = OkHttpClient()
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
     // Protocol Update: Removed TrustedClientToken which was causing 401 Unauthorized
     private val EDGE_URL = "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1"
     
-    private val mediaPlayers = LinkedList<MediaPlayer>()
+    private val mediaPlayers = Collections.synchronizedList(LinkedList<MediaPlayer>())
     private var isPlaying = false
     private var nativeTts: TextToSpeech? = null
     private var isNativeTtsReady = false
@@ -44,21 +49,23 @@ class EdgeTtsManager(private val context: Context) : TextToSpeech.OnInitListener
         }
 
         val segmentFiles = mutableListOf<File>()
-        var processedCount = 0
+        val processedCount = AtomicInteger(0)
+        val fallbackTriggered = AtomicBoolean(false)
 
         segments.forEachIndexed { index, segment ->
             val audioFile = File(context.cacheDir, "friday_segment_$index.mp3")
             segmentFiles.add(audioFile)
-            
+
             fetchAudio(segment.text, segment.voice, audioFile) { success ->
                 if (success) {
-                    processedCount++
-                    if (processedCount == segments.size) {
+                    if (!fallbackTriggered.get() && processedCount.incrementAndGet() == segments.size) {
                         playSegments(segmentFiles, onDone)
                     }
                 } else {
-                    Log.e("FRIDAY", "Edge TTS unavailable. engaging native voice fallback.")
-                    speakNative(segments, onDone)
+                    if (fallbackTriggered.compareAndSet(false, true)) {
+                        Log.e("FRIDAY", "Edge TTS unavailable. engaging native voice fallback.")
+                        speakNative(segments, onDone)
+                    }
                 }
             }
         }
@@ -71,8 +78,9 @@ class EdgeTtsManager(private val context: Context) : TextToSpeech.OnInitListener
             .header("Origin", "chrome-extension://jdiccldimpdaibmpdkjnbmckmegniedg")
             .build()
 
-        val outStream = FileOutputStream(targetFile)
+        val outStream = try { FileOutputStream(targetFile) } catch (e: java.io.IOException) { onComplete(false); return }
         var hasAudio = false
+        val isStreamClosed = AtomicBoolean(false)
 
         client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
@@ -91,11 +99,13 @@ class EdgeTtsManager(private val context: Context) : TextToSpeech.OnInitListener
                 if (buffer.remaining() >= headerLength) {
                     val headerBytes = ByteArray(headerLength)
                     buffer.get(headerBytes)
-                    if (String(headerBytes).contains("Path:audio")) {
+                    if (String(headerBytes, Charsets.US_ASCII).contains("Path:audio")) {
                         val audioBytes = ByteArray(buffer.remaining())
                         buffer.get(audioBytes)
-                        outStream.write(audioBytes)
-                        hasAudio = true
+                        if (!isStreamClosed.get()) {
+                            outStream.write(audioBytes)
+                            hasAudio = true
+                        }
                     }
                 }
             }
@@ -103,6 +113,7 @@ class EdgeTtsManager(private val context: Context) : TextToSpeech.OnInitListener
             override fun onMessage(webSocket: WebSocket, text: String) {
                 if (text.contains("turn.end")) {
                     webSocket.close(1000, "Done")
+                    isStreamClosed.set(true)
                     outStream.close()
                     onComplete(hasAudio)
                 }
@@ -110,6 +121,7 @@ class EdgeTtsManager(private val context: Context) : TextToSpeech.OnInitListener
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.e("FRIDAY", "TTS Connection Error: ${t.message}")
+                isStreamClosed.set(true)
                 try { outStream.close() } catch(_: Exception) {}
                 onComplete(false)
             }
@@ -119,6 +131,7 @@ class EdgeTtsManager(private val context: Context) : TextToSpeech.OnInitListener
     private fun playSegments(files: List<File>, onDone: () -> Unit) {
         val queue = LinkedList(files.filter { it.exists() && it.length() > 0 })
         if (queue.isEmpty()) {
+            files.forEach { try { it.delete() } catch (_: Exception) {} }
             onDone()
             return
         }
@@ -126,6 +139,7 @@ class EdgeTtsManager(private val context: Context) : TextToSpeech.OnInitListener
         fun playNext() {
             if (queue.isEmpty()) {
                 isPlaying = false
+                files.forEach { try { it.delete() } catch (_: Exception) {} }
                 onDone()
                 return
             }
@@ -141,9 +155,9 @@ class EdgeTtsManager(private val context: Context) : TextToSpeech.OnInitListener
                         Log.e("FRIDAY", "Media Error $what/$extra")
                         release(); playNext(); true 
                     }
+                    setOnPreparedListener { it.start() }
                     setOnCompletionListener { release(); playNext() }
-                    prepare()
-                    start()
+                    prepareAsync()
                 }
                 mediaPlayers.add(mp)
             } catch (e: Exception) { playNext() }
@@ -156,12 +170,26 @@ class EdgeTtsManager(private val context: Context) : TextToSpeech.OnInitListener
     }
 
     private fun speakNative(segments: List<VoiceSegment>, onDone: () -> Unit) {
-        if (!isNativeTtsReady) {
+        if (!isNativeTtsReady || segments.isEmpty()) {
             onDone()
             return
         }
-        segments.forEach { nativeTts?.speak(it.text, TextToSpeech.QUEUE_ADD, null, it.text) }
-        Handler(Looper.getMainLooper()).postDelayed({ onDone() }, 2000)
+        val lastId = segments.last().text
+        val mainHandler = Handler(Looper.getMainLooper())
+        mainHandler.post {
+            nativeTts?.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
+                override fun onDone(utteranceId: String?) {
+                    if (utteranceId == lastId) {
+                        mainHandler.post { onDone() }
+                    }
+                }
+                override fun onError(utteranceId: String?) {}
+                override fun onStart(utteranceId: String?) {}
+            })
+            segments.forEach { segment ->
+                nativeTts?.speak(segment.text, TextToSpeech.QUEUE_ADD, null, segment.text)
+            }
+        }
     }
 
     fun stop() {

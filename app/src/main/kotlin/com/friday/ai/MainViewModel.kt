@@ -1,11 +1,13 @@
 package com.friday.ai
 
-import android.content.Context
+import android.app.Application
 import android.util.Log
 import androidx.compose.runtime.mutableStateListOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.friday.ai.agents.CoordinatorAgent
+import com.friday.ai.core.ActionExecutor
+import com.friday.ai.core.ActionResult
 import com.friday.ai.models.Mission
 import com.friday.ai.models.MissionStatus
 import com.google.gson.Gson
@@ -29,24 +31,24 @@ class MainViewModel : ViewModel() {
     private val gson = Gson()
     private val OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
     
-    private val P1 = "sk-or-v1-b15ee5fb74b2fcc8e9a8b13ae2fd9072c60d29c"
-    private val P2 = "909578c381ef524f60f8796be"
-    private val OPENROUTER_API_KEY = P1 + P2
+    private val OPENROUTER_API_KEY = "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"
 
     val messages = mutableStateListOf<Map<String, String>>()
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
     
     private var coordinator: CoordinatorAgent? = null
+    private var actionExecutor: ActionExecutor? = null
 
-    fun initCoordinator(context: Context) {
+    fun initCoordinator(context: Application) {
         if (coordinator == null) {
             coordinator = CoordinatorAgent(context)
+            actionExecutor = ActionExecutor(context)
             postMsg("assistant", "Systems online, Boss.")
         }
     }
 
-    fun sendMessage(text: String, context: Context) {
+    fun sendMessage(text: String) {
         if (text.isBlank()) return
         Log.d("FRIDAY", "Mission Initiated: $text")
         
@@ -60,12 +62,35 @@ class MainViewModel : ViewModel() {
 
     private fun runCloudInference(text: String, mission: Mission) {
         viewModelScope.launch(Dispatchers.IO) {
-            // Expanded model pool to bypass upstream rate limits (429)
-            val models = "google/gemma-4-31b-it:free,google/gemma-4-26b-it:free,google/gemma-2-27b-it:free,google/gemma-2-9b-it:free"
+            // Single primary model — OpenRouter does not support comma-separated model lists
+            val model = "google/gemma-4-31b-it:free"
             
-            val systemPrompt = "You are FRIDAY, a professional AI partner. Respond in Hinglish. ALWAYS address the user as Boss. Format: [Confirmation] {json command}"
+            val systemPrompt = """You are FRIDAY, a professional AI assistant for Android.
+Respond in Hinglish (mix of Hindi and English). ALWAYS address the user as Boss.
+Keep responses short and professional — 1-2 sentences max.
+
+When the user asks you to DO something on the phone, add an action tag at the end:
+[ACTION]{"action":"ACTION_TYPE","target":"TARGET_NAME"}[/ACTION]
+
+Available actions:
+- open_app : Open any app. target = app name like youtube, whatsapp, settings, chrome, gmail, camera, phone, maps, spotify, instagram, telegram, netflix, clock, calendar, zomato, swiggy, paytm, phonepe, etc.
+- whatsapp : Open WhatsApp chat for a contact. target = contact name like Mom, Sister, etc.
+- dial : Open dialer for a contact. target = contact name like Mom, Dad, etc.
+
+Examples:
+User: Open YouTube
+FRIDAY: Opening YouTube, Boss. [ACTION]{"action":"open_app","target":"youtube"}[/ACTION]
+
+User: Call Mom
+FRIDAY: Dialing Mom, Boss. [ACTION]{"action":"dial","target":"Mom"}[/ACTION]
+
+User: WhatsApp Sister
+FRIDAY: Opening WhatsApp for Sister, Boss. [ACTION]{"action":"whatsapp","target":"Sister"}[/ACTION]
+
+If the user asks a question or chat, do NOT add any action tag. Just reply normally.
+Do not ask for confirmation before actions — just do it and inform the user."""
             val payload = mapOf(
-                "model" to models,
+                "model" to model,
                 "messages" to listOf(
                     mapOf("role" to "system", "content" to systemPrompt),
                     mapOf("role" to "user", "content" to text)
@@ -95,10 +120,10 @@ class MainViewModel : ViewModel() {
                     if (response.isSuccessful && respBody != null) {
                         try {
                             val jsonResponse = gson.fromJson(respBody, Map::class.java)
-                            val choices = jsonResponse["choices"] as List<*>
-                            val firstChoice = choices[0] as Map<*, *>
-                            val message = firstChoice["message"] as Map<*, *>
-                            val content = message["content"] as String
+                            val choices = (jsonResponse["choices"] as? List<*>) ?: return@run
+                            val firstChoice = choices.firstOrNull() as? Map<*, *> ?: return@run
+                            val message = firstChoice["message"] as? Map<*, *> ?: return@run
+                            val content = message["content"] as? String ?: return@run
                             handleAIOutput(content, mission)
                         } catch (e: Exception) {
                             Log.e("FRIDAY", "Data Parsing Error: ${e.message}")
@@ -115,11 +140,44 @@ class MainViewModel : ViewModel() {
     }
 
     private fun handleAIOutput(content: String, mission: Mission) {
-        var cleanMsg = content.replace(Regex("\\{.*\\}"), "").replace(Regex("\\[.*?\\]"), "").trim()
+        // Step 1: Extract and execute any [ACTION] tag from the LLM response
+        val actionRegex = Regex("""\[ACTION\](.*?)\[/ACTION\]""", RegexOption.DOT_MATCHES_ALL)
+        val actionMatch = actionRegex.find(content)
+
+        if (actionMatch != null) {
+            val actionJson = actionMatch.groupValues[1].trim()
+            try {
+                val parsed = gson.fromJson(actionJson, Map::class.java)
+                val actionType = (parsed["action"] as? String) ?: ""
+                val target = parsed["target"] as? String
+
+                if (actionType.isNotBlank() && actionExecutor != null) {
+                    val result = actionExecutor!!.execute(actionType, target)
+                    if (!result.success) {
+                        // Action failed — show the error instead of the LLM's success message
+                        val cleanBase = content.replace(actionRegex, "").trim()
+                        postMsg("assistant", "$cleanBase ${result.message}")
+                        mission.status = MissionStatus.COMPLETED
+                        mission.replyText = result.message
+                        return
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("FRIDAY", "Action parse error: ${e.message}")
+            }
+        }
+
+        // Step 2: Clean the message for display (remove action tags, stray JSON, brackets)
+        var cleanMsg = content
+            .replace(actionRegex, "")
+            .replace(Regex("""\{.*?\}"""), "")
+            .replace(Regex("""\[.*?\]"""), "")
+            .trim()
+
         if (cleanMsg.isBlank() && content.contains("{")) {
             cleanMsg = "Acknowledged, Boss. Engaging protocol."
         }
-        
+
         mission.status = MissionStatus.COMPLETED
         mission.replyText = cleanMsg
         postMsg("assistant", cleanMsg)
