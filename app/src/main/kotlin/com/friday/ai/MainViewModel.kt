@@ -31,7 +31,7 @@ class MainViewModel : ViewModel() {
     private val gson = Gson()
     private val OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
     
-    private val OPENROUTER_API_KEY = "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"
+    private val OPENROUTER_API_KEY = "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"
 
     val messages = mutableStateListOf<Map<String, String>>()
     private val _isLoading = MutableStateFlow(false)
@@ -62,9 +62,13 @@ class MainViewModel : ViewModel() {
 
     private fun runCloudInference(text: String, mission: Mission) {
         viewModelScope.launch(Dispatchers.IO) {
-            // Correct OpenRouter fallback protocol: 'model' (string) + 'models' (array, max 3)
+            // Prioritized Model Pool based on Boss's selection
             val primaryModel = "google/gemma-4-31b-it:free"
-            val fallbacks = listOf("nvidia/nemotron-3-super-120b:free", "openrouter/free")
+            val fallbacks = listOf(
+                "google/gemma-4-26b-a4b:free",
+                "nvidia/nemotron-3-nano-30b-a3b:free",
+                "openai/gpt-oss-20b:free"
+            )
             
             val systemPrompt = """You are FRIDAY, a professional AI assistant for Android.
 Respond in Hinglish (mix of Hindi and English). ALWAYS address the user as Boss.

@@ -1,45 +1,33 @@
-# Implementation Plan - Phase 2: Action Engine
+# Implementation Plan - Fix Brain Congestion & Update API Key
 
-This plan implements Phase 2 of the FRIDAY project, enabling the AI to execute real actions on the Android system, such as opening apps, dialing contacts, and initiating WhatsApp chats.
+This plan addresses the ongoing "systems congested" (429) and "uplink rejected" (400) errors by updating the OpenRouter API key and implementing a prioritized model fallback system based on the user's provided list.
 
 ## User Review Required
 
 > [!IMPORTANT]
-> **Dialing vs. Calling**: For safety and simplicity, we will use `ACTION_DIAL` which opens the dialer with the number pre-filled. `ACTION_CALL` requires a special restricted permission (`CALL_PHONE`) that users often deny.
+> **API Key Visibility**: The new API key will be hardcoded in `MainViewModel.kt` as requested. Please ensure the repository is private if this key is sensitive.
+> **Model IDs**: I have mapped the provided model names to their most likely OpenRouter IDs. If any model fails with a 404, we may need to verify the exact ID from the OpenRouter dashboard.
 
 ## Proposed Changes
-
-### Core Logic
-
-#### [NEW] [ActionExecutor.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/core/ActionExecutor.kt)
-Create a new utility class to handle Android Intents.
-- `launchApp(packageName: String)`: Finds and launches an app.
-- `dialContact(number: String)`: Opens the dialer.
-- `openWhatsApp(contactName: String, message: String?)`: Uses deep links or intent filters to open WhatsApp.
-- `executeAction(json: String)`: The main entry point that parses the LLM command and routes it.
 
 ### ViewModel Integration
 
 #### [MODIFY] [MainViewModel.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/MainViewModel.kt)
-- **System Prompt**: Update the system prompt to explicitly instruct the LLM to provide JSON actions in the `{ "action": "...", ... }` format.
-- **`handleAIOutput`**:
-    - Extract JSON using Regex.
-    - Instantiate `ActionExecutor` (or use a singleton).
-    - Call `executor.executeAction(json)`.
-    - Ensure the "clean" message is still spoken and displayed.
-
-### UI / Permissions
-
-#### [MODIFY] [MainActivity.kt](file:///C:/Users/admin/friday_expo/app/src/main/kotlin/com/friday/ai/MainActivity.kt)
-- Ensure basic permissions for the new actions are handled (though `ACTION_DIAL` and `ACTION_VIEW` for WhatsApp/Apps don't strictly require dangerous permissions, we'll double-check `QUERY_ALL_PACKAGES` if needed for app launching on Android 11+).
+- Update `OPENROUTER_API_KEY` to the new key provided by the user.
+- Replace the current model selection with a prioritized `model_pool` array.
+- Update `runCloudInference` to use the OpenRouter `models` (plural) field for automatic server-side failover.
+- Rank the models as follows (based on user's list and performance):
+    1. `google/gemma-4-31b:free` (Top tier dense)
+    2. `google/gemma-4-26b-a4b:free` (High efficiency MoE)
+    3. `nvidia/nemotron-3-nano-30b-a3b:free` (Agentic MoE)
+    4. `openai/gpt-oss-20b:free` (Low latency MoE)
+    5. `nvidia/nemotron-nano-9b-v2:free` (Reasoning traces)
+- Refine the JSON request body to use ONLY the `models` key (removing the singular `model` key) to follow the recommended fallback protocol and avoid 400 errors.
 
 ## Verification Plan
 
-### Automated Tests
-- I will verify the JSON parsing logic via logcat or temporary debug messages.
-- I will check if the package manager correctly resolves common package names (com.google.android.youtube, etc.).
-
 ### Manual Verification
-- **App Opening**: Ask FRIDAY to "Open YouTube" or "Open Calculator".
-- **Dialing**: Ask FRIDAY to "Call 1234567890".
-- **WhatsApp**: Ask FRIDAY to "Message Mom on WhatsApp". (Note: Searching contacts in WhatsApp via Intent is limited, we might just open the app or use a specific number if provided).
+- Deploy the updated app.
+- Send a query to FRIDAY.
+- Monitor logcat for `FRIDAY` tags to ensure the request is successful and which model was used (if returned by OpenRouter).
+- Verify that "cores congested" messages are gone or significantly reduced.
