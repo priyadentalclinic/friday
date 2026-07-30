@@ -120,10 +120,10 @@ Do not ask for confirmation before actions — just do it and inform the user.""
                     if (response.isSuccessful && respBody != null) {
                         try {
                             val jsonResponse = gson.fromJson(respBody, Map::class.java)
-                            val choices = (jsonResponse["choices"] as? List<*>) ?: return@run
-                            val firstChoice = choices.firstOrNull() as? Map<*, *> ?: return@run
-                            val message = firstChoice["message"] as? Map<*, *> ?: return@run
-                            val content = message["content"] as? String ?: return@run
+                            val choices = (jsonResponse["choices"] as? List<*>) ?: return
+                            val firstChoice = choices.firstOrNull() as? Map<*, *> ?: return
+                            val message = firstChoice["message"] as? Map<*, *> ?: return
+                            val content = message["content"] as? String ?: return
                             handleAIOutput(content, mission)
                         } catch (e: Exception) {
                             Log.e("FRIDAY", "Data Parsing Error: ${e.message}")
