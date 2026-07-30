@@ -78,7 +78,7 @@ dependencies {
     implementation("com.google.mlkit:language-id:17.0.6")
     
     // Persistence (Memory Agent)
-    val roomVersion = "2.6.2"
+    val roomVersion = "2.6.1"
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
     ksp("androidx.room:room-compiler:$roomVersion")
