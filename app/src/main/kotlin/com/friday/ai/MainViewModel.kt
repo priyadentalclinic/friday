@@ -62,13 +62,9 @@ class MainViewModel : ViewModel() {
 
     private fun runCloudInference(text: String, mission: Mission) {
         viewModelScope.launch(Dispatchers.IO) {
-            // Using a model pool to bypass congestion. OpenRouter tries these in order.
-            val models = listOf(
-                "google/gemma-4-31b-it:free",
-                "nvidia/nemotron-3-super-120b:free",
-                "openai/gpt-oss-120b:free",
-                "openrouter/free"
-            )
+            // Correct OpenRouter fallback protocol: 'model' (string) + 'models' (array, max 3)
+            val primaryModel = "google/gemma-4-31b-it:free"
+            val fallbacks = listOf("nvidia/nemotron-3-super-120b:free", "openrouter/free")
             
             val systemPrompt = """You are FRIDAY, a professional AI assistant for Android.
 Respond in Hinglish (mix of Hindi and English). ALWAYS address the user as Boss.
@@ -95,7 +91,8 @@ FRIDAY: Opening WhatsApp for Sister, Boss. [ACTION]{"action":"whatsapp","target"
 If the user asks a question or chat, do NOT add any action tag. Just reply normally.
 Do not ask for confirmation before actions — just do it and inform the user."""
             val payload = mapOf(
-                "model" to models,
+                "model" to primaryModel,
+                "models" to fallbacks,
                 "messages" to listOf(
                     mapOf("role" to "system", "content" to systemPrompt),
                     mapOf("role" to "user", "content" to text)

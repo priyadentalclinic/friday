@@ -24,6 +24,10 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
         <package android:name="com.whatsapp" />
         <package android:name="com.google.android.youtube" />
         <package android:name="com.android.settings" />
@@ -37,6 +41,23 @@
         <package android:name="org.telegram.messenger" />
         <package android:name="com.netflix.mediaclient" />
         <package android:name="com.amazon.mShop.android.shopping" />
+        <package android:name="com.android.camera" />
+        <package android:name="com.android.vending" />
+        <package android:name="com.twitter.android" />
+        <package android:name="com.facebook.katana" />
+        <package android:name="com.linkedin.android" />
+        <package android:name="com.google.android.apps.photos" />
+        <package android:name="com.google.android.apps.docs" />
+        <package android:name="com.google.android.apps.meet" />
+        <package android:name="com.android.deskclock" />
+        <package android:name="com.android.calendar" />
+        <package android:name="com.android.calculator2" />
+        <package android:name="com.android.documentsui" />
+        <package android:name="com.google.android.apps.fitness" />
+        <package android:name="com.google.android.apps.gnews" />
+        <package android:name="com.google.android.apps.walletnfcrel" />
+        <package android:name="com.android.messages" />
+        <package android:name="com.whatsapp.w4b" />
     </queries>
 
     <application
