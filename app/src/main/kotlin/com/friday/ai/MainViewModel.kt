@@ -61,16 +61,9 @@ class MainViewModel : ViewModel() {
 
     private fun runCloudInference(text: String, mission: Mission) {
         viewModelScope.launch(Dispatchers.IO) {
-            // Prioritized Model Pool (Instruct/Chat models only)
-            // Note: Use only 'models' array as per OpenRouter fallback protocol
-            val modelList = listOf(
-                "google/gemma-4-31b-it:free",
-                "nvidia/nemotron-3-nano-omni:free",
-                "google/gemma-4-26b-a4b:free",
-                "openai/gpt-oss-20b:free",
-                "openrouter/free"
-            )
-            
+            // Comma-separated fallback chain — if Gemma 4 is busy, falls to next free model
+            val model = "google/gemma-4-31b-it:free,microsoft/phi-4:free,meta-llama/llama-4-scout:free,google/gemma-4-26b-it:free"
+
             val systemPrompt = """You are FRIDAY, a professional AI assistant for Android.
 Respond in Hinglish (mix of Hindi and English). ALWAYS address the user as Boss.
 Keep responses short and professional — 1-2 sentences max.
@@ -79,7 +72,7 @@ When the user asks you to DO something on the phone, add an action tag at the en
 [ACTION]{"action":"ACTION_TYPE","target":"TARGET_NAME"}[/ACTION]
 
 Available actions:
-- open_app : Open any app. target = app name like youtube, whatsapp, settings, chrome, gmail, camera, phone, maps, spotify, instagram, telegram, netflix, clock, calendar, zomato, swiggy, paytm, phonepe, etc.
+- open_app : Open any app. target = app name like youtube, whatsapp, settings, chrome, gmail, camera, phone, maps, spotify, instagram, telegram, netflix, clock, calendar, etc.
 - whatsapp : Open WhatsApp chat for a contact. target = contact name like Mom, Sister, etc.
 - dial : Open dialer for a contact. target = contact name like Mom, Dad, etc.
 
@@ -96,7 +89,7 @@ FRIDAY: Opening WhatsApp for Sister, Boss. [ACTION]{"action":"whatsapp","target"
 If the user asks a question or chat, do NOT add any action tag. Just reply normally.
 Do not ask for confirmation before actions — just do it and inform the user."""
             val payload = mapOf(
-                "models" to modelList,
+                "model" to model,
                 "messages" to listOf(
                     mapOf("role" to "system", "content" to systemPrompt),
                     mapOf("role" to "user", "content" to text)
@@ -136,8 +129,16 @@ Do not ask for confirmation before actions — just do it and inform the user.""
                             postMsg("assistant", "Data corrupted in transit.")
                         }
                     } else {
-                        Log.e("FRIDAY", "Satellite Error: ${response.code} - $respBody")
-                        val errorReason = if (response.code == 429) "Cores congested." else "Uplink rejected (Code: ${response.code})"
+                        Log.e("FRIDAY", "Satellite Error: ${response.code}")
+                        Log.e("FRIDAY", "Full response: $respBody")
+                        Log.e("FRIDAY", "Request was: model=$model, text=$text")
+                        val errorReason = when (response.code) {
+                            429 -> "Cores congested."
+                            400 -> "Uplink rejected. ${respBody?.let { parseOpenRouterError(it) } ?: ""}"
+                            401 -> "Authentication failed. API key rejected."
+                            403 -> "Access denied. Check model permissions."
+                            else -> "Uplink rejected (Code: ${response.code})"
+                        }
                         postMsg("assistant", "$errorReason Please standby, Boss.")
                     }
                 }
@@ -187,6 +188,17 @@ Do not ask for confirmation before actions — just do it and inform the user.""
         mission.status = MissionStatus.COMPLETED
         mission.replyText = cleanMsg
         postMsg("assistant", cleanMsg)
+    }
+
+    private fun parseOpenRouterError(body: String): String {
+        return try {
+            val err = gson.fromJson(body, Map::class.java)
+            val error = err["error"] as? Map<*, *>
+            if (error != null) {
+                val msg = error["message"] as? String ?: ""
+                if (msg.length > 120) msg.take(120) + "..." else msg
+            } else "Unknown error"
+        } catch (_: Exception) { "Parse failed" }
     }
 
     private fun postMsg(role: String, content: String) {
