@@ -7,7 +7,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.friday.ai.agents.CoordinatorAgent
 import com.friday.ai.core.ActionExecutor
-import com.friday.ai.core.ActionResult
 import com.friday.ai.models.Mission
 import com.friday.ai.models.MissionStatus
 import com.google.gson.Gson
@@ -62,12 +61,14 @@ class MainViewModel : ViewModel() {
 
     private fun runCloudInference(text: String, mission: Mission) {
         viewModelScope.launch(Dispatchers.IO) {
-            // Prioritized Model Pool based on Boss's selection
-            val primaryModel = "google/gemma-4-31b-it:free"
-            val fallbacks = listOf(
+            // Prioritized Model Pool (Instruct/Chat models only)
+            // Note: Use only 'models' array as per OpenRouter fallback protocol
+            val modelList = listOf(
+                "google/gemma-4-31b-it:free",
+                "nvidia/nemotron-3-nano-omni:free",
                 "google/gemma-4-26b-a4b:free",
-                "nvidia/nemotron-3-nano-30b-a3b:free",
-                "openai/gpt-oss-20b:free"
+                "openai/gpt-oss-20b:free",
+                "openrouter/free"
             )
             
             val systemPrompt = """You are FRIDAY, a professional AI assistant for Android.
@@ -95,8 +96,7 @@ FRIDAY: Opening WhatsApp for Sister, Boss. [ACTION]{"action":"whatsapp","target"
 If the user asks a question or chat, do NOT add any action tag. Just reply normally.
 Do not ask for confirmation before actions — just do it and inform the user."""
             val payload = mapOf(
-                "model" to primaryModel,
-                "models" to fallbacks,
+                "models" to modelList,
                 "messages" to listOf(
                     mapOf("role" to "system", "content" to systemPrompt),
                     mapOf("role" to "user", "content" to text)
